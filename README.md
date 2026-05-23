@@ -4,6 +4,19 @@ A lightweight Angular 19 web MVP for editing BPMN diagrams with `bpmn-js` and Ca
 
 This project is intentionally **not** a port of the Camunda Modeler Electron application. It reuses the BPMN modeling idea, but rebuilds the experience as a clean frontend-only Angular shell.
 
+## Milestone 1 Scope
+
+This POC validates the Angular BPMN modeler foundation:
+
+- Angular can host a BPMN canvas cleanly.
+- `bpmn-js` renders inside Angular with the BPMN palette, icons, and toolbox styles.
+- A default diagram loads on startup.
+- Basic visual editing works.
+- BPMN modeler lifecycle and APIs are isolated behind an Angular adapter service.
+- The app remains frontend-only for this milestone.
+
+Milestone 1 is about proving the technical foundation, not recreating the full Camunda Modeler.
+
 ## What This MVP Includes
 
 - BPMN workspace with a main canvas, toolbar, workflow explorer, properties inspector, XML viewer, and problems panel.
@@ -18,6 +31,24 @@ This project is intentionally **not** a port of the Camunda Modeler Electron app
 - Dirty state tracking and browser reload warning for unsaved changes.
 - Basic validation for invalid XML, missing process names, and unnamed tasks.
 - Import and export for `.bpmn` and `.xml` files.
+
+## Storage Behavior
+
+The app saves diagrams in browser `localStorage` under the current browser origin, such as `http://localhost:4200`.
+
+Stopping and restarting Angular with `npm start` does not delete saved diagrams. Data can be lost if browser site data is cleared, a private browsing session is closed, or the app is opened from a different origin such as `http://127.0.0.1:4200`.
+
+Use **Export** to download an actual `.bpmn` file to disk.
+
+## Known Limitations
+
+- No backend or database.
+- No authentication, RBAC, or user accounts.
+- No Camunda deployment action inside the app.
+- No collaboration or version history.
+- No AI workflow generation.
+- Validation is intentionally lightweight and does not replace Camunda 8 deployment validation.
+- A production build may show a CommonJS optimization warning from a transitive BPMN properties-panel dependency. This does not block the POC build.
 
 ## Future Phases
 
@@ -47,6 +78,12 @@ Build the app:
 
 ```bash
 npm run build
+```
+
+Run tests:
+
+```bash
+npm run test
 ```
 
 ## Project Structure
@@ -81,3 +118,19 @@ src/app/
 5. Import a `.bpmn` or `.xml` file.
 6. Export the current diagram as a `.bpmn` file.
 7. Run validation and click a problem to focus the related BPMN element when possible.
+
+## Demo Preparation
+
+For a clean recorded demo, use one browser origin consistently, preferably:
+
+```text
+http://localhost:4200/
+```
+
+If old local data causes confusing warnings, clear this app's browser storage and reload:
+
+```js
+localStorage.removeItem('bpmn-process-designer.current-workflow');
+localStorage.removeItem('bpmn-process-designer.saved-workflows');
+location.reload();
+```
