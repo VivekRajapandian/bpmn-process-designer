@@ -1,0 +1,39 @@
+:host,
+section {
+  display: block;
+  height: 100%;
+  min-height: 0;
+}
+
+section {
+  background: #101820;
+  color: #d8e6f7;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-bottom: 1px solid #2d3a46;
+}
+
+h2 {
+  margin: 0;
+  font-size: 15px;
+}
+
+span {
+  color: #91a3b7;
+  font-size: 12px;
+}
+
+pre {
+  height: calc(100% - 45px);
+  margin: 0;
+  overflow: auto;
+  padding: 14px;
+  font: 12px/1.55 Consolas, 'Courier New', monospace;
+  white-space: pre-wrap;
+}

@@ -1,0 +1,65 @@
+<main class="workspace">
+  <app-toolbar
+    [status]="workflow.status"
+    (newDiagram)="newDiagram()"
+    (importDiagram)="importDiagram($event)"
+    (exportDiagram)="exportDiagram()"
+    (save)="saveLocally()"
+    (validate)="validate()"
+    (undo)="undo()"
+    (redo)="redo()"
+    (zoomIn)="zoomIn()"
+    (zoomOut)="zoomOut()"
+  />
+
+  <section class="body">
+    <app-workflow-explorer
+      [workflows]="samples"
+      [activeWorkflowId]="workflow.id"
+      (workflowSelected)="selectWorkflow($event)"
+    />
+
+    <section class="modeler">
+      <div class="canvas-header">
+        <div>
+          <h1>{{ workflow.name }}</h1>
+          <p>{{ workflow.description }}</p>
+        </div>
+        <span>Updated {{ workflow.updatedAt | date: 'short' }}</span>
+      </div>
+
+      <app-bpmn-canvas />
+
+      <app-problems-panel
+        [problems]="problems"
+        (problemSelected)="focusProblem($event)"
+      />
+    </section>
+
+    <aside class="right-panel">
+      <div class="tabs" role="tablist" aria-label="Inspector panels">
+        <button
+          type="button"
+          [class.active]="activePanel === 'properties'"
+          (click)="setPanel('properties')"
+        >
+          Properties
+        </button>
+        <button
+          type="button"
+          [class.active]="activePanel === 'xml'"
+          (click)="setPanel('xml')"
+        >
+          XML
+        </button>
+      </div>
+
+      <div class="panel-content" [class.hidden]="activePanel !== 'properties'">
+        <app-properties-panel />
+      </div>
+      <div class="panel-content" [class.hidden]="activePanel !== 'xml'">
+        <app-xml-viewer [xml]="workflow.xml" />
+      </div>
+    </aside>
+  </section>
+</main>

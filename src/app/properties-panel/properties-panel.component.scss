@@ -1,0 +1,32 @@
+:host {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  min-height: 0;
+  height: 100%;
+  background: #ffffff;
+  border-left: 1px solid #d8dee8;
+}
+
+header {
+  padding: 14px 16px 12px;
+  border-bottom: 1px solid #e2e7ef;
+}
+
+h2 {
+  margin: 0;
+  color: #14233a;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+span {
+  display: block;
+  margin-top: 4px;
+  color: #637083;
+  font-size: 12px;
+}
+
+.properties-host {
+  min-height: 0;
+  overflow: auto;
+}

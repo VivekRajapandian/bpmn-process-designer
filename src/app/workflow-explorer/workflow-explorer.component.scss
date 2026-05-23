@@ -1,0 +1,67 @@
+:host,
+aside {
+  display: block;
+  height: 100%;
+}
+
+aside {
+  background: #f6f8fb;
+  border-right: 1px solid #d8dee8;
+  overflow: auto;
+}
+
+header {
+  padding: 16px 14px 12px;
+}
+
+h2 {
+  margin: 0;
+  color: #14233a;
+  font-size: 16px;
+}
+
+header span {
+  display: block;
+  margin-top: 3px;
+  color: #687789;
+  font-size: 12px;
+}
+
+button {
+  display: block;
+  width: calc(100% - 16px);
+  margin: 0 8px 8px;
+  padding: 12px;
+  background: #ffffff;
+  border: 1px solid #dde4ed;
+  border-radius: 8px;
+  color: #223047;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+button:hover {
+  border-color: #b8c5d6;
+}
+
+button.active {
+  background: #eaf3ff;
+  border-color: #70a5e8;
+}
+
+strong,
+span {
+  display: block;
+}
+
+strong {
+  font-size: 13px;
+}
+
+button span {
+  margin-top: 5px;
+  color: #667386;
+  font-size: 12px;
+  line-height: 1.35;
+}
