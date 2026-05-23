@@ -48,6 +48,7 @@ export class BpmnWorkspaceComponent implements AfterViewInit, OnDestroy {
   workflow!: Workflow;
   problems: WorkflowProblem[] = [];
   activePanel: RightPanel = 'properties';
+  saveMessage = '';
 
   samples: Workflow[] = [];
   readonly workflowStatus = WorkflowStatus;
@@ -115,7 +116,7 @@ export class BpmnWorkspaceComponent implements AfterViewInit, OnDestroy {
       return;
     }
 
-    await this.loadWorkflow(workflow, false);
+    await this.loadWorkflow(this.workflowState.resolveWorkflow(workflow), false);
   }
 
   async importDiagram(file: File): Promise<void> {
@@ -149,12 +150,15 @@ export class BpmnWorkspaceComponent implements AfterViewInit, OnDestroy {
 
   async saveLocally(): Promise<void> {
     const xml = await this.bpmnAdapter.saveXml();
-    this.workflowState.markSaved(xml);
-    this.validate();
+    const saved = this.workflowState.markSaved(xml);
+    this.samples = this.workflowState.samples;
+    this.workflowState.setProblems(this.workflowValidation.validate(xml));
+    this.saveMessage = `Saved locally at ${new Date(saved.updatedAt).toLocaleTimeString()}`;
   }
 
   validate(): void {
     this.workflowState.setProblems(this.workflowValidation.validate(this.workflow.xml));
+    this.saveMessage = '';
   }
 
   focusProblem(problem: WorkflowProblem): void {
@@ -208,6 +212,7 @@ export class BpmnWorkspaceComponent implements AfterViewInit, OnDestroy {
 
     const xml = await this.bpmnAdapter.saveXml();
     this.workflowState.setXml(xml, dirty);
+    this.saveMessage = '';
   }
 
   private canDiscardChanges(): boolean {

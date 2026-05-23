@@ -55,6 +55,18 @@ p {
   margin-top: 4px;
 }
 
+.workspace-meta {
+  display: grid;
+  justify-items: end;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.save-message {
+  color: #157347;
+  font-weight: 700;
+}
+
 .right-panel {
   display: grid;
   grid-template-rows: auto 1fr;

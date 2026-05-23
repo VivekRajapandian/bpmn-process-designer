@@ -25,7 +25,10 @@
           <h1>{{ workflow.name }}</h1>
           <p>{{ workflow.description }}</p>
         </div>
-        <span>Updated {{ workflow.updatedAt | date: 'short' }}</span>
+        <div class="workspace-meta">
+          <span *ngIf="saveMessage" class="save-message">{{ saveMessage }}</span>
+          <span>Updated {{ workflow.updatedAt | date: 'short' }}</span>
+        </div>
       </div>
 
       <app-bpmn-canvas />

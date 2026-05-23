@@ -28,9 +28,10 @@ export class WorkflowStateService {
     private readonly sampleWorkflows: SampleWorkflowsService,
     private readonly workflowStorage: WorkflowStorageService
   ) {
-    this.samples = this.sampleWorkflows.getSamples();
+    this.samples = this.workflowStorage.hydrate(this.sampleWorkflows.getSamples());
+    const savedWorkflow = this.workflowStorage.load();
     this.workflowSubject = new BehaviorSubject<Workflow>(
-      this.workflowStorage.load() ?? this.samples[0]
+      savedWorkflow ? { ...savedWorkflow, status: WorkflowStatus.Clean } : this.samples[0]
     );
     this.workflow$ = this.workflowSubject.asObservable();
   }
@@ -71,8 +72,25 @@ export class WorkflowStateService {
     };
 
     this.workflowStorage.save(saved);
+    this.updateSample(saved);
     this.workflowSubject.next(saved);
 
     return saved;
+  }
+
+  resolveWorkflow(workflow: Workflow): Workflow {
+    const savedWorkflow = this.workflowStorage.loadWorkflow(workflow.id);
+
+    return savedWorkflow
+      ? { ...savedWorkflow, status: WorkflowStatus.Clean }
+      : workflow;
+  }
+
+  private updateSample(saved: Workflow): void {
+    const sampleIndex = this.samples.findIndex((sample) => sample.id === saved.id);
+
+    if (sampleIndex >= 0) {
+      this.samples[sampleIndex] = saved;
+    }
   }
 }
