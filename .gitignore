@@ -9,8 +9,18 @@
 # Node
 /node_modules
 npm-debug.log
+npm-debug.log*
 yarn-error.log
+yarn-error.log*
+yarn-debug.log*
+pnpm-debug.log*
+lerna-debug.log*
 ng-serve*.log
+
+# Environment files
+.env
+.env.*
+!.env.example
 
 # IDEs and editors
 .idea/
@@ -30,7 +40,7 @@ ng-serve*.log
 .history/*
 
 # Miscellaneous
-/.angular/cache
+/.angular
 .sass-cache/
 /connect.lock
 /coverage
