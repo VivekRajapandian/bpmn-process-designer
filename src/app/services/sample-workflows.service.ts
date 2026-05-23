@@ -48,12 +48,15 @@ export class SampleWorkflowsService {
 }
 
 const blankWorkflowXml = `<?xml version="1.0" encoding="UTF-8"?>
-<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Definitions_Blank" targetNamespace="http://bpmn.io/schema/bpmn">
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" id="Definitions_Blank" targetNamespace="http://bpmn.io/schema/bpmn">
   <bpmn:process id="Process_Blank" name="Untitled Process" isExecutable="true">
     <bpmn:startEvent id="StartEvent_Blank" name="Start">
       <bpmn:outgoing>Flow_Blank_1</bpmn:outgoing>
     </bpmn:startEvent>
     <bpmn:task id="Task_Blank" name="New Task">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="new-task" />
+      </bpmn:extensionElements>
       <bpmn:incoming>Flow_Blank_1</bpmn:incoming>
       <bpmn:outgoing>Flow_Blank_2</bpmn:outgoing>
     </bpmn:task>
@@ -87,18 +90,18 @@ const blankWorkflowXml = `<?xml version="1.0" encoding="UTF-8"?>
 </bpmn:definitions>`;
 
 const customerOnboardingXml = `<?xml version="1.0" encoding="UTF-8"?>
-<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Definitions_Customer" targetNamespace="http://bpmn.io/schema/bpmn">
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" id="Definitions_Customer" targetNamespace="http://bpmn.io/schema/bpmn">
   <bpmn:process id="Process_CustomerOnboarding" name="Customer Onboarding" isExecutable="true">
     <bpmn:startEvent id="StartEvent_Customer" name="Lead Received"><bpmn:outgoing>Flow_Customer_1</bpmn:outgoing></bpmn:startEvent>
-    <bpmn:task id="Task_Customer_Qualify" name="Qualify Customer"><bpmn:incoming>Flow_Customer_1</bpmn:incoming><bpmn:outgoing>Flow_Customer_2</bpmn:outgoing></bpmn:task>
-    <bpmn:exclusiveGateway id="Gateway_Customer_Approved" name="Approved?"><bpmn:incoming>Flow_Customer_2</bpmn:incoming><bpmn:outgoing>Flow_Customer_3</bpmn:outgoing><bpmn:outgoing>Flow_Customer_4</bpmn:outgoing></bpmn:exclusiveGateway>
-    <bpmn:task id="Task_Customer_CreateAccount" name="Create Account"><bpmn:incoming>Flow_Customer_3</bpmn:incoming><bpmn:outgoing>Flow_Customer_5</bpmn:outgoing></bpmn:task>
-    <bpmn:task id="Task_Customer_Welcome" name="Send Welcome Pack"><bpmn:incoming>Flow_Customer_5</bpmn:incoming><bpmn:outgoing>Flow_Customer_6</bpmn:outgoing></bpmn:task>
+    <bpmn:task id="Task_Customer_Qualify" name="Qualify Customer"><bpmn:extensionElements><zeebe:taskDefinition type="qualify-customer" /></bpmn:extensionElements><bpmn:incoming>Flow_Customer_1</bpmn:incoming><bpmn:outgoing>Flow_Customer_2</bpmn:outgoing></bpmn:task>
+    <bpmn:exclusiveGateway id="Gateway_Customer_Approved" name="Approved?" default="Flow_Customer_4"><bpmn:incoming>Flow_Customer_2</bpmn:incoming><bpmn:outgoing>Flow_Customer_3</bpmn:outgoing><bpmn:outgoing>Flow_Customer_4</bpmn:outgoing></bpmn:exclusiveGateway>
+    <bpmn:task id="Task_Customer_CreateAccount" name="Create Account"><bpmn:extensionElements><zeebe:taskDefinition type="create-account" /></bpmn:extensionElements><bpmn:incoming>Flow_Customer_3</bpmn:incoming><bpmn:outgoing>Flow_Customer_5</bpmn:outgoing></bpmn:task>
+    <bpmn:task id="Task_Customer_Welcome" name="Send Welcome Pack"><bpmn:extensionElements><zeebe:taskDefinition type="send-welcome-pack" /></bpmn:extensionElements><bpmn:incoming>Flow_Customer_5</bpmn:incoming><bpmn:outgoing>Flow_Customer_6</bpmn:outgoing></bpmn:task>
     <bpmn:endEvent id="EndEvent_Customer_Live" name="Customer Live"><bpmn:incoming>Flow_Customer_6</bpmn:incoming></bpmn:endEvent>
     <bpmn:endEvent id="EndEvent_Customer_Rejected" name="Rejected"><bpmn:incoming>Flow_Customer_4</bpmn:incoming></bpmn:endEvent>
     <bpmn:sequenceFlow id="Flow_Customer_1" sourceRef="StartEvent_Customer" targetRef="Task_Customer_Qualify" />
     <bpmn:sequenceFlow id="Flow_Customer_2" sourceRef="Task_Customer_Qualify" targetRef="Gateway_Customer_Approved" />
-    <bpmn:sequenceFlow id="Flow_Customer_3" name="Yes" sourceRef="Gateway_Customer_Approved" targetRef="Task_Customer_CreateAccount" />
+    <bpmn:sequenceFlow id="Flow_Customer_3" name="Yes" sourceRef="Gateway_Customer_Approved" targetRef="Task_Customer_CreateAccount"><bpmn:conditionExpression>=approved</bpmn:conditionExpression></bpmn:sequenceFlow>
     <bpmn:sequenceFlow id="Flow_Customer_4" name="No" sourceRef="Gateway_Customer_Approved" targetRef="EndEvent_Customer_Rejected" />
     <bpmn:sequenceFlow id="Flow_Customer_5" sourceRef="Task_Customer_CreateAccount" targetRef="Task_Customer_Welcome" />
     <bpmn:sequenceFlow id="Flow_Customer_6" sourceRef="Task_Customer_Welcome" targetRef="EndEvent_Customer_Live" />
@@ -121,19 +124,19 @@ const customerOnboardingXml = `<?xml version="1.0" encoding="UTF-8"?>
 </bpmn:definitions>`;
 
 const invoiceApprovalXml = `<?xml version="1.0" encoding="UTF-8"?>
-<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Definitions_Invoice" targetNamespace="http://bpmn.io/schema/bpmn">
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" id="Definitions_Invoice" targetNamespace="http://bpmn.io/schema/bpmn">
   <bpmn:process id="Process_InvoiceApproval" name="Invoice Approval" isExecutable="true">
     <bpmn:startEvent id="StartEvent_Invoice" name="Invoice Received"><bpmn:outgoing>Flow_Invoice_1</bpmn:outgoing></bpmn:startEvent>
-    <bpmn:task id="Task_Invoice_Capture" name="Capture Invoice"><bpmn:incoming>Flow_Invoice_1</bpmn:incoming><bpmn:outgoing>Flow_Invoice_2</bpmn:outgoing></bpmn:task>
-    <bpmn:task id="Task_Invoice_Review" name="Manager Review"><bpmn:incoming>Flow_Invoice_2</bpmn:incoming><bpmn:outgoing>Flow_Invoice_3</bpmn:outgoing></bpmn:task>
-    <bpmn:exclusiveGateway id="Gateway_Invoice_Approved" name="Approved?"><bpmn:incoming>Flow_Invoice_3</bpmn:incoming><bpmn:outgoing>Flow_Invoice_4</bpmn:outgoing><bpmn:outgoing>Flow_Invoice_5</bpmn:outgoing></bpmn:exclusiveGateway>
-    <bpmn:task id="Task_Invoice_Pay" name="Schedule Payment"><bpmn:incoming>Flow_Invoice_4</bpmn:incoming><bpmn:outgoing>Flow_Invoice_6</bpmn:outgoing></bpmn:task>
+    <bpmn:task id="Task_Invoice_Capture" name="Capture Invoice"><bpmn:extensionElements><zeebe:taskDefinition type="capture-invoice" /></bpmn:extensionElements><bpmn:incoming>Flow_Invoice_1</bpmn:incoming><bpmn:outgoing>Flow_Invoice_2</bpmn:outgoing></bpmn:task>
+    <bpmn:task id="Task_Invoice_Review" name="Manager Review"><bpmn:extensionElements><zeebe:taskDefinition type="manager-review" /></bpmn:extensionElements><bpmn:incoming>Flow_Invoice_2</bpmn:incoming><bpmn:outgoing>Flow_Invoice_3</bpmn:outgoing></bpmn:task>
+    <bpmn:exclusiveGateway id="Gateway_Invoice_Approved" name="Approved?" default="Flow_Invoice_5"><bpmn:incoming>Flow_Invoice_3</bpmn:incoming><bpmn:outgoing>Flow_Invoice_4</bpmn:outgoing><bpmn:outgoing>Flow_Invoice_5</bpmn:outgoing></bpmn:exclusiveGateway>
+    <bpmn:task id="Task_Invoice_Pay" name="Schedule Payment"><bpmn:extensionElements><zeebe:taskDefinition type="schedule-payment" /></bpmn:extensionElements><bpmn:incoming>Flow_Invoice_4</bpmn:incoming><bpmn:outgoing>Flow_Invoice_6</bpmn:outgoing></bpmn:task>
     <bpmn:endEvent id="EndEvent_Invoice_Paid" name="Paid"><bpmn:incoming>Flow_Invoice_6</bpmn:incoming></bpmn:endEvent>
     <bpmn:endEvent id="EndEvent_Invoice_Returned" name="Returned"><bpmn:incoming>Flow_Invoice_5</bpmn:incoming></bpmn:endEvent>
     <bpmn:sequenceFlow id="Flow_Invoice_1" sourceRef="StartEvent_Invoice" targetRef="Task_Invoice_Capture" />
     <bpmn:sequenceFlow id="Flow_Invoice_2" sourceRef="Task_Invoice_Capture" targetRef="Task_Invoice_Review" />
     <bpmn:sequenceFlow id="Flow_Invoice_3" sourceRef="Task_Invoice_Review" targetRef="Gateway_Invoice_Approved" />
-    <bpmn:sequenceFlow id="Flow_Invoice_4" name="Yes" sourceRef="Gateway_Invoice_Approved" targetRef="Task_Invoice_Pay" />
+    <bpmn:sequenceFlow id="Flow_Invoice_4" name="Yes" sourceRef="Gateway_Invoice_Approved" targetRef="Task_Invoice_Pay"><bpmn:conditionExpression>=approved</bpmn:conditionExpression></bpmn:sequenceFlow>
     <bpmn:sequenceFlow id="Flow_Invoice_5" name="No" sourceRef="Gateway_Invoice_Approved" targetRef="EndEvent_Invoice_Returned" />
     <bpmn:sequenceFlow id="Flow_Invoice_6" sourceRef="Task_Invoice_Pay" targetRef="EndEvent_Invoice_Paid" />
   </bpmn:process>
@@ -155,17 +158,17 @@ const invoiceApprovalXml = `<?xml version="1.0" encoding="UTF-8"?>
 </bpmn:definitions>`;
 
 const supportEscalationXml = `<?xml version="1.0" encoding="UTF-8"?>
-<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Definitions_Support" targetNamespace="http://bpmn.io/schema/bpmn">
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" id="Definitions_Support" targetNamespace="http://bpmn.io/schema/bpmn">
   <bpmn:process id="Process_SupportEscalation" name="Support Ticket Escalation" isExecutable="true">
     <bpmn:startEvent id="StartEvent_Support" name="Ticket Created"><bpmn:outgoing>Flow_Support_1</bpmn:outgoing></bpmn:startEvent>
-    <bpmn:task id="Task_Support_Triage" name="Triage Ticket"><bpmn:incoming>Flow_Support_1</bpmn:incoming><bpmn:outgoing>Flow_Support_2</bpmn:outgoing></bpmn:task>
-    <bpmn:exclusiveGateway id="Gateway_Support_Resolved" name="Resolved?"><bpmn:incoming>Flow_Support_2</bpmn:incoming><bpmn:outgoing>Flow_Support_3</bpmn:outgoing><bpmn:outgoing>Flow_Support_4</bpmn:outgoing></bpmn:exclusiveGateway>
-    <bpmn:task id="Task_Support_Escalate" name="Escalate to Specialist"><bpmn:incoming>Flow_Support_4</bpmn:incoming><bpmn:outgoing>Flow_Support_5</bpmn:outgoing></bpmn:task>
-    <bpmn:task id="Task_Support_Notify" name="Notify Customer"><bpmn:incoming>Flow_Support_3</bpmn:incoming><bpmn:incoming>Flow_Support_5</bpmn:incoming><bpmn:outgoing>Flow_Support_6</bpmn:outgoing></bpmn:task>
+    <bpmn:task id="Task_Support_Triage" name="Triage Ticket"><bpmn:extensionElements><zeebe:taskDefinition type="triage-ticket" /></bpmn:extensionElements><bpmn:incoming>Flow_Support_1</bpmn:incoming><bpmn:outgoing>Flow_Support_2</bpmn:outgoing></bpmn:task>
+    <bpmn:exclusiveGateway id="Gateway_Support_Resolved" name="Resolved?" default="Flow_Support_4"><bpmn:incoming>Flow_Support_2</bpmn:incoming><bpmn:outgoing>Flow_Support_3</bpmn:outgoing><bpmn:outgoing>Flow_Support_4</bpmn:outgoing></bpmn:exclusiveGateway>
+    <bpmn:task id="Task_Support_Escalate" name="Escalate to Specialist"><bpmn:extensionElements><zeebe:taskDefinition type="escalate-to-specialist" /></bpmn:extensionElements><bpmn:incoming>Flow_Support_4</bpmn:incoming><bpmn:outgoing>Flow_Support_5</bpmn:outgoing></bpmn:task>
+    <bpmn:task id="Task_Support_Notify" name="Notify Customer"><bpmn:extensionElements><zeebe:taskDefinition type="notify-customer" /></bpmn:extensionElements><bpmn:incoming>Flow_Support_3</bpmn:incoming><bpmn:incoming>Flow_Support_5</bpmn:incoming><bpmn:outgoing>Flow_Support_6</bpmn:outgoing></bpmn:task>
     <bpmn:endEvent id="EndEvent_Support_Closed" name="Ticket Closed"><bpmn:incoming>Flow_Support_6</bpmn:incoming></bpmn:endEvent>
     <bpmn:sequenceFlow id="Flow_Support_1" sourceRef="StartEvent_Support" targetRef="Task_Support_Triage" />
     <bpmn:sequenceFlow id="Flow_Support_2" sourceRef="Task_Support_Triage" targetRef="Gateway_Support_Resolved" />
-    <bpmn:sequenceFlow id="Flow_Support_3" name="Yes" sourceRef="Gateway_Support_Resolved" targetRef="Task_Support_Notify" />
+    <bpmn:sequenceFlow id="Flow_Support_3" name="Yes" sourceRef="Gateway_Support_Resolved" targetRef="Task_Support_Notify"><bpmn:conditionExpression>=resolved</bpmn:conditionExpression></bpmn:sequenceFlow>
     <bpmn:sequenceFlow id="Flow_Support_4" name="No" sourceRef="Gateway_Support_Resolved" targetRef="Task_Support_Escalate" />
     <bpmn:sequenceFlow id="Flow_Support_5" sourceRef="Task_Support_Escalate" targetRef="Task_Support_Notify" />
     <bpmn:sequenceFlow id="Flow_Support_6" sourceRef="Task_Support_Notify" targetRef="EndEvent_Support_Closed" />
