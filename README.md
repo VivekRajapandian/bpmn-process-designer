@@ -32,6 +32,23 @@ Milestone 1 is about proving the technical foundation, not recreating the full C
 - Basic validation for invalid XML, missing process names, and unnamed tasks.
 - Import and export for `.bpmn` and `.xml` files.
 
+## What Comes From BPMN Libraries Vs Our Angular Code
+
+The POC does not rebuild the BPMN engine from scratch. It uses `bpmn-js` and related BPMN packages for core diagram modeling, then wraps them in a custom Angular application shell.
+
+Library-provided features:
+
+- `bpmn-js` provides BPMN canvas rendering, shapes, sequence flows, selection, drag/drop editing, command stack, undo/redo, zoom, XML import, and XML export.
+- `diagram-js` is used internally by `bpmn-js` for canvas interaction, palette behavior, command stack, and viewport services.
+- `bpmn-js-properties-panel` provides the right-side BPMN properties inspector.
+- `zeebe-bpmn-moddle` lets the modeler parse and preserve Camunda 8 / Zeebe extension XML.
+- BPMN package CSS provides the BPMN icons, canvas styling, palette/toolbox visuals, and properties panel styling.
+
+Custom Angular features:
+
+- Angular owns the workspace layout, toolbar, workflow explorer, save/import/export flows, XML viewer, problems panel, local storage, state management, and lifecycle integration.
+- The BPMN modeler is isolated behind an Angular adapter service so UI components do not directly manage `bpmn-js` internals.
+
 ## Storage Behavior
 
 The app saves diagrams in browser `localStorage` under the current browser origin, such as `http://localhost:4200`.
@@ -108,6 +125,28 @@ src/app/
     workflow-problem.model.ts
     workflow-status.enum.ts
 ```
+
+## Component And Service Responsibilities
+
+- `bpmn-workspace/` - Custom Angular page shell that wires the toolbar, explorer, BPMN canvas, properties panel, XML viewer, problems panel, and workflow actions together.
+- `bpmn-canvas/` - Custom Angular host component that exposes the DOM element where `bpmn-js` renders the BPMN canvas.
+- `toolbar/` - Custom Angular toolbar that emits actions for New, Import, Export, Save, Validate, Undo, Redo, and Zoom.
+- `properties-panel/` - Custom Angular host for the library-provided `bpmn-js-properties-panel` inspector.
+- `xml-viewer/` - Custom Angular read-only panel that displays the current BPMN XML from the modeler.
+- `problems-panel/` - Custom Angular panel that displays local validation results and calls the adapter to focus BPMN elements.
+- `workflow-explorer/` - Custom Angular sample workflow picker that loads local BPMN examples and saved workflow versions.
+- `bpmn-modeler-adapter.service.ts` - Custom Angular wrapper around `bpmn-js`; initializes the modeler, imports/exports XML, handles undo/redo/zoom/focus, listens to modeler changes, and destroys the modeler.
+- `workflow-state.service.ts` - Custom Angular/RxJS state service for current workflow, dirty state, saved samples, and validation problems.
+- `workflow-storage.service.ts` - Custom browser persistence service that stores BPMN XML in `localStorage`.
+- `workflow-validation.service.ts` - Custom lightweight validator for XML parsing, process/task naming, simple gateway rules, and basic Zeebe task definition checks.
+- `sample-workflows.service.ts` - Custom local sample BPMN XML provider for the demo workflows and blank workflow.
+- `models/` - Custom TypeScript interfaces/enums for workflows, validation problems, and workflow status.
+
+## Demo Talk Track
+
+This milestone proves the Angular foundation. The BPMN engine is provided by `bpmn-js` and Camunda/Zeebe-compatible packages for rendering, editing, palette behavior, command stack, XML import/export, properties inspection, and Zeebe extension support. Around that, this project adds a custom Angular shell with workflow navigation, local save, validation display, XML viewing, import/export UI, and lifecycle cleanup.
+
+In short: this POC wraps proven BPMN libraries inside a clean Angular architecture instead of rebuilding BPMN modeling from scratch or porting the full Camunda Modeler Electron app.
 
 ## Demo Flow
 
