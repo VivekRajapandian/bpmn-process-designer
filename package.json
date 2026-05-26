@@ -19,7 +19,7 @@
     "@angular/router": "^19.2.0",
     "@bpmn-io/properties-panel": "^3.44.0",
     "bpmn-js": "^18.16.1",
-    "bpmn-js-properties-panel": "^5.58.0",
+    "bpmn-js-properties-panel": "^5.56.0",
     "rxjs": "~7.8.0",
     "tslib": "^2.3.0",
     "zeebe-bpmn-moddle": "^1.14.0",
