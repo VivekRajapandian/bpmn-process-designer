@@ -1,4 +1,5 @@
 import { Injectable } from '@angular/core';
+import { EngineType } from '../models/engine-type.enum';
 import { Workflow } from '../models/workflow.model';
 import { WorkflowStatus } from '../models/workflow-status.enum';
 
@@ -11,43 +12,59 @@ export class SampleWorkflowsService {
       {
         id: 'customer-onboarding',
         name: 'Customer Onboarding Workflow',
-        description: 'Qualify, approve, and welcome a new customer.',
-        xml: customerOnboardingXml,
+        engineType: EngineType.CAMUNDA_8,
+        bpmnXml: customerOnboardingXml,
+        createdAt: now,
         updatedAt: now,
+        description: 'Qualify, approve, and welcome a new customer.',
         status: WorkflowStatus.Clean
       },
       {
         id: 'invoice-approval',
         name: 'Invoice Approval Workflow',
-        description: 'Review, approve, and pay vendor invoices.',
-        xml: invoiceApprovalXml,
+        engineType: EngineType.CAMUNDA_8,
+        bpmnXml: invoiceApprovalXml,
+        createdAt: now,
         updatedAt: now,
+        description: 'Review, approve, and pay vendor invoices.',
         status: WorkflowStatus.Clean
       },
       {
         id: 'support-ticket-escalation',
         name: 'Support Ticket Escalation Workflow',
-        description: 'Triage, resolve, or escalate support tickets.',
-        xml: supportEscalationXml,
+        engineType: EngineType.CAMUNDA_8,
+        bpmnXml: supportEscalationXml,
+        createdAt: now,
         updatedAt: now,
+        description: 'Triage, resolve, or escalate support tickets.',
         status: WorkflowStatus.Clean
       }
     ];
   }
 
-  createBlankWorkflow(): Workflow {
+  createBlankWorkflow(engineType: EngineType): Workflow {
+    const now = new Date().toISOString();
+
     return {
       id: `workflow-${Date.now()}`,
       name: 'Untitled BPMN Diagram',
+      engineType,
+      bpmnXml: this.blankWorkflowXml(engineType),
+      createdAt: now,
+      updatedAt: now,
       description: 'A new local BPMN workflow.',
-      xml: blankWorkflowXml,
-      updatedAt: new Date().toISOString(),
       status: WorkflowStatus.Dirty
     };
   }
+
+  private blankWorkflowXml(engineType: EngineType): string {
+    return engineType === EngineType.CAMUNDA_7
+      ? blankCamunda7WorkflowXml
+      : blankCamunda8WorkflowXml;
+  }
 }
 
-const blankWorkflowXml = `<?xml version="1.0" encoding="UTF-8"?>
+const blankCamunda8WorkflowXml = `<?xml version="1.0" encoding="UTF-8"?>
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" id="Definitions_Blank" targetNamespace="http://bpmn.io/schema/bpmn">
   <bpmn:process id="Process_Blank" name="Untitled Process" isExecutable="true">
     <bpmn:startEvent id="StartEvent_Blank" name="Start">
@@ -60,6 +77,45 @@ const blankWorkflowXml = `<?xml version="1.0" encoding="UTF-8"?>
       <bpmn:incoming>Flow_Blank_1</bpmn:incoming>
       <bpmn:outgoing>Flow_Blank_2</bpmn:outgoing>
     </bpmn:task>
+    <bpmn:endEvent id="EndEvent_Blank" name="End">
+      <bpmn:incoming>Flow_Blank_2</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="Flow_Blank_1" sourceRef="StartEvent_Blank" targetRef="Task_Blank" />
+    <bpmn:sequenceFlow id="Flow_Blank_2" sourceRef="Task_Blank" targetRef="EndEvent_Blank" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_Blank">
+    <bpmndi:BPMNPlane id="BPMNPlane_Blank" bpmnElement="Process_Blank">
+      <bpmndi:BPMNShape id="StartEvent_Blank_di" bpmnElement="StartEvent_Blank">
+        <dc:Bounds x="160" y="160" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_Blank_di" bpmnElement="Task_Blank">
+        <dc:Bounds x="260" y="138" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="EndEvent_Blank_di" bpmnElement="EndEvent_Blank">
+        <dc:Bounds x="460" y="160" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_Blank_1_di" bpmnElement="Flow_Blank_1">
+        <di:waypoint x="196" y="178" />
+        <di:waypoint x="260" y="178" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_Blank_2_di" bpmnElement="Flow_Blank_2">
+        <di:waypoint x="380" y="178" />
+        <di:waypoint x="460" y="178" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>`;
+
+const blankCamunda7WorkflowXml = `<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:camunda="http://camunda.org/schema/1.0/bpmn" id="Definitions_Blank" targetNamespace="http://bpmn.io/schema/bpmn">
+  <bpmn:process id="Process_Blank" name="Untitled Process" isExecutable="true">
+    <bpmn:startEvent id="StartEvent_Blank" name="Start">
+      <bpmn:outgoing>Flow_Blank_1</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:serviceTask id="Task_Blank" name="New Task" camunda:class="">
+      <bpmn:incoming>Flow_Blank_1</bpmn:incoming>
+      <bpmn:outgoing>Flow_Blank_2</bpmn:outgoing>
+    </bpmn:serviceTask>
     <bpmn:endEvent id="EndEvent_Blank" name="End">
       <bpmn:incoming>Flow_Blank_2</bpmn:incoming>
     </bpmn:endEvent>

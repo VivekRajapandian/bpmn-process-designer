@@ -37,16 +37,19 @@ export class WorkflowStateService {
   }
 
   setWorkflow(workflow: Workflow, dirty = false): void {
-    this.workflowSubject.next({
+    const nextWorkflow = {
       ...workflow,
       status: dirty ? WorkflowStatus.Dirty : workflow.status
-    });
+    };
+
+    this.upsertWorkflow(nextWorkflow);
+    this.workflowSubject.next(nextWorkflow);
   }
 
   setXml(xml: string, dirty = true): void {
     this.workflowSubject.next({
       ...this.workflow,
-      xml,
+      bpmnXml: xml,
       updatedAt: new Date().toISOString(),
       status: dirty ? WorkflowStatus.Dirty : WorkflowStatus.Clean
     });
@@ -66,13 +69,13 @@ export class WorkflowStateService {
   markSaved(xml: string): Workflow {
     const saved = {
       ...this.workflow,
-      xml,
+      bpmnXml: xml,
       updatedAt: new Date().toISOString(),
       status: WorkflowStatus.Clean
     };
 
     this.workflowStorage.save(saved);
-    this.updateSample(saved);
+    this.upsertWorkflow(saved);
     this.workflowSubject.next(saved);
 
     return saved;
@@ -86,11 +89,14 @@ export class WorkflowStateService {
       : workflow;
   }
 
-  private updateSample(saved: Workflow): void {
+  private upsertWorkflow(saved: Workflow): void {
     const sampleIndex = this.samples.findIndex((sample) => sample.id === saved.id);
 
     if (sampleIndex >= 0) {
       this.samples[sampleIndex] = saved;
+      return;
     }
+
+    this.samples.unshift(saved);
   }
 }

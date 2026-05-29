@@ -6,8 +6,10 @@ import {
   OnDestroy,
   ViewChild
 } from '@angular/core';
+import { FormsModule } from '@angular/forms';
 import { Subscription } from 'rxjs';
 import { BpmnCanvasComponent } from '../bpmn-canvas/bpmn-canvas.component';
+import { EngineType } from '../models/engine-type.enum';
 import { WorkflowProblem } from '../models/workflow-problem.model';
 import { Workflow } from '../models/workflow.model';
 import { WorkflowStatus } from '../models/workflow-status.enum';
@@ -28,6 +30,7 @@ type RightPanel = 'properties' | 'xml';
   standalone: true,
   imports: [
     CommonModule,
+    FormsModule,
     BpmnCanvasComponent,
     ProblemsPanelComponent,
     PropertiesPanelComponent,
@@ -49,9 +52,16 @@ export class BpmnWorkspaceComponent implements AfterViewInit, OnDestroy {
   problems: WorkflowProblem[] = [];
   activePanel: RightPanel = 'properties';
   saveMessage = '';
+  engineChoice?: {
+    title: string;
+    prompt: string;
+    selected: EngineType;
+    resolve: (engineType: EngineType | null) => void;
+  };
 
   samples: Workflow[] = [];
   readonly workflowStatus = WorkflowStatus;
+  readonly engineType = EngineType;
 
   private readonly subscription = new Subscription();
   private isImporting = false;
@@ -67,7 +77,11 @@ export class BpmnWorkspaceComponent implements AfterViewInit, OnDestroy {
   }
 
   async ngAfterViewInit(): Promise<void> {
-    this.bpmnAdapter.initialize(this.canvas.element, this.propertiesPanel.element);
+    this.bpmnAdapter.initialize(
+      this.canvas.element,
+      this.propertiesPanel.element,
+      this.workflow.engineType
+    );
 
     this.subscription.add(
       this.workflowState.workflow$.subscribe((workflow) => {
@@ -108,7 +122,16 @@ export class BpmnWorkspaceComponent implements AfterViewInit, OnDestroy {
       return;
     }
 
-    await this.loadWorkflow(this.sampleWorkflows.createBlankWorkflow(), true);
+    const engineType = await this.selectEngineType(
+      'Create New BPMN Diagram',
+      'Target Engine:'
+    );
+
+    if (!engineType) {
+      return;
+    }
+
+    await this.loadWorkflow(this.sampleWorkflows.createBlankWorkflow(engineType), true);
   }
 
   async selectWorkflow(workflow: Workflow): Promise<void> {
@@ -125,12 +148,24 @@ export class BpmnWorkspaceComponent implements AfterViewInit, OnDestroy {
     }
 
     const xml = await file.text();
+    const engineType = await this.selectEngineType(
+      'Import BPMN Diagram',
+      'Which engine should this workflow target?'
+    );
+
+    if (!engineType) {
+      return;
+    }
+
+    const now = new Date().toISOString();
     const workflow: Workflow = {
       id: `import-${Date.now()}`,
       name: file.name.replace(/\.(bpmn|xml)$/i, '') || 'Imported BPMN',
+      engineType,
+      bpmnXml: xml,
+      createdAt: now,
+      updatedAt: now,
       description: 'Imported from a local BPMN/XML file.',
-      xml,
-      updatedAt: new Date().toISOString(),
       status: WorkflowStatus.Dirty
     };
 
@@ -152,12 +187,14 @@ export class BpmnWorkspaceComponent implements AfterViewInit, OnDestroy {
     const xml = await this.bpmnAdapter.saveXml();
     const saved = this.workflowState.markSaved(xml);
     this.samples = this.workflowState.samples;
-    this.workflowState.setProblems(this.workflowValidation.validate(xml));
+    this.workflowState.setProblems(this.workflowValidation.validate(xml, saved.engineType));
     this.saveMessage = `Saved locally at ${new Date(saved.updatedAt).toLocaleTimeString()}`;
   }
 
   validate(): void {
-    this.workflowState.setProblems(this.workflowValidation.validate(this.workflow.xml));
+    this.workflowState.setProblems(
+      this.workflowValidation.validate(this.workflow.bpmnXml, this.workflow.engineType)
+    );
     this.saveMessage = '';
   }
 
@@ -185,12 +222,29 @@ export class BpmnWorkspaceComponent implements AfterViewInit, OnDestroy {
     this.activePanel = panel;
   }
 
+  resolveEngineChoice(engineType: EngineType): void {
+    this.engineChoice?.resolve(engineType);
+    this.engineChoice = undefined;
+  }
+
+  cancelEngineChoice(): void {
+    this.engineChoice?.resolve(null);
+    this.engineChoice = undefined;
+  }
+
+  engineLabel(engineType: EngineType): string {
+    return engineType === EngineType.CAMUNDA_7 ? 'Camunda 7' : 'Camunda 8';
+  }
+
   private async loadWorkflow(workflow: Workflow, dirty: boolean): Promise<void> {
     try {
       this.isImporting = true;
       this.workflowState.setWorkflow(workflow, dirty);
-      await this.bpmnAdapter.importXml(workflow.xml);
-      this.workflowState.setProblems(this.workflowValidation.validate(workflow.xml));
+      this.bpmnAdapter.initializeForEngine(workflow.engineType);
+      await this.bpmnAdapter.importXml(workflow.bpmnXml);
+      this.workflowState.setProblems(
+        this.workflowValidation.validate(workflow.bpmnXml, workflow.engineType)
+      );
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unable to load BPMN XML.';
       this.workflowState.setProblems([
@@ -227,5 +281,16 @@ export class BpmnWorkspaceComponent implements AfterViewInit, OnDestroy {
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/(^-|-$)/g, '') || 'workflow';
+  }
+
+  private selectEngineType(title: string, prompt: string): Promise<EngineType | null> {
+    return new Promise((resolve) => {
+      this.engineChoice = {
+        title,
+        prompt,
+        selected: EngineType.CAMUNDA_8,
+        resolve
+      };
+    });
   }
 }

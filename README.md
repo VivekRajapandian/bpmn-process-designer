@@ -22,6 +22,7 @@ Milestone 1 is about proving the technical foundation, not recreating the full C
 - BPMN workspace with a main canvas, toolbar, workflow explorer, properties inspector, XML viewer, and problems panel.
 - Visual BPMN editing powered by `bpmn-js`.
 - Properties editing powered by `bpmn-js-properties-panel`.
+- Camunda 7 and Camunda 8 target-engine selection during workflow creation and import.
 - Zeebe moddle extension support through `zeebe-bpmn-moddle`.
 - Local sample workflows:
   - Customer Onboarding Workflow
@@ -31,6 +32,14 @@ Milestone 1 is about proving the technical foundation, not recreating the full C
 - Dirty state tracking and browser reload warning for unsaved changes.
 - Basic validation for invalid XML, missing process names, and unnamed tasks.
 - Import and export for `.bpmn` and `.xml` files.
+
+## Camunda Engine Targeting
+
+The app supports workflows that are explicitly marked for Camunda 7 or Camunda 8. Users choose the target engine when creating a new diagram or importing an existing `.bpmn` / `.xml` file. Camunda 8 is the default selection for new diagrams.
+
+The selected engine type is saved with the workflow metadata in `localStorage` and restored with the BPMN XML after a browser refresh. Once a workflow has been created or imported, the engine type is read-only and cannot be changed from Camunda 7 to Camunda 8, or from Camunda 8 to Camunda 7.
+
+Conversion between Camunda 7 and Camunda 8 is intentionally not supported in this release. Camunda 7 and Camunda 8 differ in namespaces, execution semantics, expression languages, extension properties, and BPMN coverage. Conversion requires dedicated migration tooling and validation.
 
 ## What Comes From BPMN Libraries Vs Our Angular Code
 
@@ -65,6 +74,7 @@ Use **Export** to download an actual `.bpmn` file to disk.
 - No collaboration or version history.
 - No AI workflow generation.
 - Validation is intentionally lightweight and does not replace Camunda 8 deployment validation.
+- No conversion or migration tooling between Camunda 7 and Camunda 8.
 - A production build may show a CommonJS optimization warning from a transitive BPMN properties-panel dependency. This does not block the POC build.
 
 ## Future Phases
@@ -121,6 +131,7 @@ src/app/
     workflow-validation.service.ts
     sample-workflows.service.ts
   models/
+    engine-type.enum.ts
     workflow.model.ts
     workflow-problem.model.ts
     workflow-status.enum.ts
@@ -140,7 +151,7 @@ src/app/
 - `workflow-storage.service.ts` - Custom browser persistence service that stores BPMN XML in `localStorage`.
 - `workflow-validation.service.ts` - Custom lightweight validator for XML parsing, process/task naming, simple gateway rules, and basic Zeebe task definition checks.
 - `sample-workflows.service.ts` - Custom local sample BPMN XML provider for the demo workflows and blank workflow.
-- `models/` - Custom TypeScript interfaces/enums for workflows, validation problems, and workflow status.
+- `models/` - Custom TypeScript interfaces/enums for engine type, workflows, validation problems, and workflow status.
 
 ## Demo Talk Track
 
@@ -154,7 +165,7 @@ In short: this POC wraps proven BPMN libraries inside a clean Angular architectu
 2. Select a task and edit its name in the right inspector.
 3. Open the XML tab to show the updated BPMN XML.
 4. Save locally, refresh the browser, and confirm the workflow is restored.
-5. Import a `.bpmn` or `.xml` file.
+5. Create or import a `.bpmn` / `.xml` file and choose Camunda 7 or Camunda 8 in the engine prompt.
 6. Export the current diagram as a `.bpmn` file.
 7. Run validation and click a problem to focus the related BPMN element when possible.
 

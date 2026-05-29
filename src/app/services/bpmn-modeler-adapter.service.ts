@@ -4,41 +4,105 @@ import Modeler from 'bpmn-js/lib/Modeler';
 import {
   BpmnPropertiesPanelModule,
   BpmnPropertiesProviderModule,
+  CamundaPlatformPropertiesProviderModule,
   ZeebePropertiesProviderModule
 } from 'bpmn-js-properties-panel';
+import CamundaPlatformBehaviorsModule from 'camunda-bpmn-js-behaviors/lib/camunda-platform';
+import ZeebeBehaviorsModule from 'camunda-bpmn-js-behaviors/lib/camunda-cloud';
+import camundaModdle from 'camunda-bpmn-moddle/resources/camunda.json';
 import zeebeModdle from 'zeebe-bpmn-moddle/resources/zeebe.json';
+import { EngineType } from '../models/engine-type.enum';
 
 @Injectable({ providedIn: 'root' })
 export class BpmnModelerAdapterService {
   private modeler?: any;
+  private canvas?: HTMLElement;
+  private propertiesPanel?: HTMLElement;
+  private engineType?: EngineType;
   private zoomLevel = 1;
 
   readonly changed$ = new Subject<void>();
 
   constructor(private readonly zone: NgZone) {}
 
-  initialize(canvas: HTMLElement, propertiesPanel: HTMLElement): void {
+  initialize(
+    canvas: HTMLElement,
+    propertiesPanel: HTMLElement,
+    engineType = EngineType.CAMUNDA_8
+  ): void {
+    this.canvas = canvas;
+    this.propertiesPanel = propertiesPanel;
+    this.createModeler(engineType);
+  }
+
+  initializeForEngine(engineType: EngineType): void {
+    if (this.modeler && this.engineType === engineType) {
+      return;
+    }
+
+    if (!this.canvas || !this.propertiesPanel) {
+      throw new Error('BPMN modeler host elements are not available.');
+    }
+
+    this.createModeler(engineType);
+  }
+
+  private createModeler(engineType: EngineType): void {
     this.destroy();
+    this.engineType = engineType;
+    const config = this.createModelerConfig(engineType);
 
     this.modeler = new Modeler({
-      container: canvas,
-      propertiesPanel: {
-        parent: propertiesPanel
-      },
-      additionalModules: [
-        BpmnPropertiesPanelModule,
-        BpmnPropertiesProviderModule,
-        ZeebePropertiesProviderModule
-      ],
-      moddleExtensions: {
-        zeebe: zeebeModdle
-      }
+      container: this.canvas,
+      ...config
     });
 
     const eventBus = this.modeler.get('eventBus');
     eventBus.on('commandStack.changed', () => {
       this.zone.run(() => this.changed$.next());
     });
+  }
+
+  private createModelerConfig(engineType: EngineType): object {
+    if (engineType === EngineType.CAMUNDA_7) {
+      return this.createCamunda7Config();
+    }
+
+    return this.createCamunda8Config();
+  }
+
+  private createCamunda7Config(): object {
+    return {
+      propertiesPanel: {
+        parent: this.propertiesPanel
+      },
+      additionalModules: [
+        BpmnPropertiesPanelModule,
+        BpmnPropertiesProviderModule,
+        CamundaPlatformPropertiesProviderModule,
+        CamundaPlatformBehaviorsModule
+      ],
+      moddleExtensions: {
+        camunda: camundaModdle
+      }
+    };
+  }
+
+  private createCamunda8Config(): object {
+    return {
+      propertiesPanel: {
+        parent: this.propertiesPanel
+      },
+      additionalModules: [
+        BpmnPropertiesPanelModule,
+        BpmnPropertiesProviderModule,
+        ZeebePropertiesProviderModule,
+        ZeebeBehaviorsModule
+      ],
+      moddleExtensions: {
+        zeebe: zeebeModdle
+      }
+    };
   }
 
   async importXml(xml: string): Promise<void> {

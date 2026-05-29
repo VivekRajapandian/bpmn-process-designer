@@ -10,7 +10,7 @@ import { Workflow } from '../models/workflow.model';
     <aside>
       <header>
         <h2>Workflows</h2>
-        <span>Local samples</span>
+        <span>Local workflows</span>
       </header>
 
       <button

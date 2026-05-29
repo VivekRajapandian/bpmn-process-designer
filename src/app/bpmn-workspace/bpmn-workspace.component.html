@@ -22,10 +22,11 @@
     <section class="modeler">
       <div class="canvas-header">
         <div>
-          <h1>{{ workflow.name }}</h1>
+          <h1>Workflow: {{ workflow.name }}</h1>
           <p>{{ workflow.description }}</p>
         </div>
         <div class="workspace-meta">
+          <span class="engine-label">Engine: {{ engineLabel(workflow.engineType) }}</span>
           <span *ngIf="saveMessage" class="save-message">{{ saveMessage }}</span>
           <span>Updated {{ workflow.updatedAt | date: 'short' }}</span>
         </div>
@@ -61,8 +62,53 @@
         <app-properties-panel />
       </div>
       <div class="panel-content" [class.hidden]="activePanel !== 'xml'">
-        <app-xml-viewer [xml]="workflow.xml" />
+        <app-xml-viewer [xml]="workflow.bpmnXml" />
       </div>
     </aside>
   </section>
+
+  <div *ngIf="engineChoice" class="modal-backdrop" role="presentation">
+    <section
+      class="engine-dialog"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="engine-choice-title"
+    >
+      <h2 id="engine-choice-title">{{ engineChoice.title }}</h2>
+      <p>{{ engineChoice.prompt }}</p>
+
+      <fieldset>
+        <legend class="visually-hidden">Target engine</legend>
+        <label>
+          <input
+            type="radio"
+            name="engineType"
+            [value]="engineType.CAMUNDA_7"
+            [(ngModel)]="engineChoice.selected"
+          />
+          Camunda 7
+        </label>
+        <label>
+          <input
+            type="radio"
+            name="engineType"
+            [value]="engineType.CAMUNDA_8"
+            [(ngModel)]="engineChoice.selected"
+          />
+          Camunda 8
+        </label>
+      </fieldset>
+
+      <div class="dialog-actions">
+        <button type="button" (click)="cancelEngineChoice()">Cancel</button>
+        <button
+          type="button"
+          class="primary"
+          (click)="resolveEngineChoice(engineChoice.selected)"
+        >
+          Continue
+        </button>
+      </div>
+    </section>
+  </div>
 </main>

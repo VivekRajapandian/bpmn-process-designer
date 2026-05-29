@@ -1,9 +1,10 @@
 import { Injectable } from '@angular/core';
+import { EngineType } from '../models/engine-type.enum';
 import { WorkflowProblem } from '../models/workflow-problem.model';
 
 @Injectable({ providedIn: 'root' })
 export class WorkflowValidationService {
-  validate(xml: string): WorkflowProblem[] {
+  validate(xml: string, engineType = EngineType.CAMUNDA_8): WorkflowProblem[] {
     const parser = new DOMParser();
     const document = parser.parseFromString(xml, 'application/xml');
     const parserError = document.querySelector('parsererror');
@@ -62,7 +63,10 @@ export class WorkflowValidationService {
           });
         }
 
-        if (!zeebeTaskDefinitionNames.includes(task.localName)) {
+        if (
+          engineType !== EngineType.CAMUNDA_8 ||
+          !zeebeTaskDefinitionNames.includes(task.localName)
+        ) {
           continue;
         }
 

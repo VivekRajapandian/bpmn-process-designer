@@ -1,5 +1,7 @@
 import { Injectable } from '@angular/core';
+import { EngineType } from '../models/engine-type.enum';
 import { Workflow } from '../models/workflow.model';
+import { WorkflowStatus } from '../models/workflow-status.enum';
 
 const WORKFLOW_KEY = 'bpmn-process-designer.current-workflow';
 const WORKFLOWS_KEY = 'bpmn-process-designer.saved-workflows';
@@ -14,7 +16,7 @@ export class WorkflowStorageService {
     }
 
     try {
-      return JSON.parse(raw) as Workflow;
+      return this.normalizeWorkflow(JSON.parse(raw));
     } catch {
       localStorage.removeItem(WORKFLOW_KEY);
       return null;
@@ -39,11 +41,16 @@ export class WorkflowStorageService {
 
   hydrate(workflows: Workflow[]): Workflow[] {
     const savedWorkflows = this.loadSavedWorkflows();
-
-    return workflows.map((workflow) => ({
+    const hydratedWorkflows = workflows.map((workflow) => ({
       ...workflow,
       ...savedWorkflows[workflow.id]
     }));
+    const sampleIds = new Set(workflows.map((workflow) => workflow.id));
+    const customWorkflows = Object.values(savedWorkflows)
+      .filter((workflow) => !sampleIds.has(workflow.id))
+      .sort((first, second) => second.updatedAt.localeCompare(first.updatedAt));
+
+    return [...customWorkflows, ...hydratedWorkflows];
   }
 
   private loadSavedWorkflows(): Record<string, Workflow> {
@@ -55,10 +62,44 @@ export class WorkflowStorageService {
     }
 
     try {
-      return JSON.parse(raw) as Record<string, Workflow>;
+      return this.normalizeWorkflows(JSON.parse(raw));
     } catch {
       localStorage.removeItem(WORKFLOWS_KEY);
       return {};
     }
+  }
+
+  private normalizeWorkflows(value: unknown): Record<string, Workflow> {
+    if (!value || typeof value !== 'object') {
+      return {};
+    }
+
+    return Object.entries(value as Record<string, unknown>).reduce<Record<string, Workflow>>(
+      (workflows, [id, workflow]) => {
+        workflows[id] = this.normalizeWorkflow(workflow);
+        return workflows;
+      },
+      {}
+    );
+  }
+
+  private normalizeWorkflow(value: unknown): Workflow {
+    const workflow = value as Partial<Workflow> & { xml?: string };
+    const now = new Date().toISOString();
+    const engineType =
+      workflow.engineType === EngineType.CAMUNDA_7
+        ? EngineType.CAMUNDA_7
+        : EngineType.CAMUNDA_8;
+
+    return {
+      id: workflow.id ?? `workflow-${Date.now()}`,
+      name: workflow.name ?? 'Untitled BPMN Diagram',
+      engineType,
+      bpmnXml: workflow.bpmnXml ?? workflow.xml ?? '',
+      createdAt: workflow.createdAt ?? workflow.updatedAt ?? now,
+      updatedAt: workflow.updatedAt ?? now,
+      description: workflow.description ?? 'A local BPMN workflow.',
+      status: workflow.status ?? WorkflowStatus.Clean
+    };
   }
 }
