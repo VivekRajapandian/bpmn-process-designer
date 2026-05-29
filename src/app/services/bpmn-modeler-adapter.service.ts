@@ -4,35 +4,57 @@ import Modeler from 'bpmn-js/lib/Modeler';
 import {
   BpmnPropertiesPanelModule,
   BpmnPropertiesProviderModule,
+  CamundaPlatformPropertiesProviderModule,
   ZeebePropertiesProviderModule
 } from 'bpmn-js-properties-panel';
+import CamundaPlatformBehaviorsModule from 'camunda-bpmn-js-behaviors/lib/camunda-platform';
+import ZeebeBehaviorsModule from 'camunda-bpmn-js-behaviors/lib/camunda-cloud';
+import camundaModdle from 'camunda-bpmn-moddle/resources/camunda.json';
 import zeebeModdle from 'zeebe-bpmn-moddle/resources/zeebe.json';
+import { EngineType } from '../models/engine-type.enum';
 
 @Injectable({ providedIn: 'root' })
 export class BpmnModelerAdapterService {
   private modeler?: any;
+  private canvas?: HTMLElement;
+  private propertiesPanel?: HTMLElement;
+  private engineType?: EngineType;
   private zoomLevel = 1;
 
   readonly changed$ = new Subject<void>();
 
   constructor(private readonly zone: NgZone) {}
 
-  initialize(canvas: HTMLElement, propertiesPanel: HTMLElement): void {
+  initialize(
+    canvas: HTMLElement,
+    propertiesPanel: HTMLElement,
+    engineType = EngineType.CAMUNDA_8
+  ): void {
+    this.canvas = canvas;
+    this.propertiesPanel = propertiesPanel;
+    this.createModeler(engineType);
+  }
+
+  initializeForEngine(engineType: EngineType): void {
+    if (this.modeler && this.engineType === engineType) {
+      return;
+    }
+
+    if (!this.canvas || !this.propertiesPanel) {
+      throw new Error('BPMN modeler host elements are not available.');
+    }
+
+    this.createModeler(engineType);
+  }
+
+  private createModeler(engineType: EngineType): void {
     this.destroy();
+    this.engineType = engineType;
+    const config = this.createModelerConfig(engineType);
 
     this.modeler = new Modeler({
-      container: canvas,
-      propertiesPanel: {
-        parent: propertiesPanel
-      },
-      additionalModules: [
-        BpmnPropertiesPanelModule,
-        BpmnPropertiesProviderModule,
-        ZeebePropertiesProviderModule
-      ],
-      moddleExtensions: {
-        zeebe: zeebeModdle
-      }
+      container: this.canvas,
+      ...config
     });
 
     const eventBus = this.modeler.get('eventBus');
@@ -41,10 +63,52 @@ export class BpmnModelerAdapterService {
     });
   }
 
+  private createModelerConfig(engineType: EngineType): object {
+    if (engineType === EngineType.CAMUNDA_7) {
+      return this.createCamunda7Config();
+    }
+
+    return this.createCamunda8Config();
+  }
+
+  private createCamunda7Config(): object {
+    return {
+      propertiesPanel: {
+        parent: this.propertiesPanel
+      },
+      additionalModules: [
+        BpmnPropertiesPanelModule,
+        BpmnPropertiesProviderModule,
+        CamundaPlatformPropertiesProviderModule,
+        CamundaPlatformBehaviorsModule
+      ],
+      moddleExtensions: {
+        camunda: camundaModdle
+      }
+    };
+  }
+
+  private createCamunda8Config(): object {
+    return {
+      propertiesPanel: {
+        parent: this.propertiesPanel
+      },
+      additionalModules: [
+        BpmnPropertiesPanelModule,
+        BpmnPropertiesProviderModule,
+        ZeebePropertiesProviderModule,
+        ZeebeBehaviorsModule
+      ],
+      moddleExtensions: {
+        zeebe: zeebeModdle
+      }
+    };
+  }
+
   async importXml(xml: string): Promise<void> {
     this.ensureModeler();
     await this.modeler.importXML(xml);
-    this.zoomFit();
+    await this.zoomFitWhenReady();
   }
 
   async saveXml(): Promise<string> {
@@ -71,6 +135,10 @@ export class BpmnModelerAdapterService {
 
   zoomFit(): void {
     this.ensureModeler();
+    if (!this.hasMeasurableCanvas()) {
+      return;
+    }
+
     this.modeler.get('canvas').zoom('fit-viewport', 'auto');
     this.zoomLevel = 1;
   }
@@ -109,6 +177,42 @@ export class BpmnModelerAdapterService {
   private commandStack(): any {
     this.ensureModeler();
     return this.modeler.get('commandStack');
+  }
+
+  private async zoomFitWhenReady(): Promise<void> {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      await this.nextAnimationFrame();
+
+      if (!this.hasMeasurableCanvas()) {
+        continue;
+      }
+
+      try {
+        this.zoomFit();
+      } catch {
+        this.setZoom(1);
+      }
+
+      return;
+    }
+  }
+
+  private hasMeasurableCanvas(): boolean {
+    const bounds = this.canvas?.getBoundingClientRect();
+
+    return Boolean(
+      bounds &&
+        Number.isFinite(bounds.width) &&
+        Number.isFinite(bounds.height) &&
+        bounds.width > 0 &&
+        bounds.height > 0
+    );
+  }
+
+  private nextAnimationFrame(): Promise<void> {
+    return new Promise((resolve) => {
+      requestAnimationFrame(() => resolve());
+    });
   }
 
   private ensureModeler(): void {

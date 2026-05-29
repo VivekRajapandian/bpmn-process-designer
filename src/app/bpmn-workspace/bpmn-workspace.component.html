@@ -16,16 +16,24 @@
     <app-workflow-explorer
       [workflows]="samples"
       [activeWorkflowId]="workflow.id"
+      [deletableWorkflowIds]="deletableWorkflowIds"
       (workflowSelected)="selectWorkflow($event)"
+      (workflowDeleted)="deleteWorkflow($event)"
     />
 
     <section class="modeler">
       <div class="canvas-header">
         <div>
-          <h1>{{ workflow.name }}</h1>
+          <div class="title-row">
+            <h1>Workflow: {{ workflow.name }}</h1>
+            <button type="button" class="rename-button" (click)="renameWorkflow()">
+              Rename
+            </button>
+          </div>
           <p>{{ workflow.description }}</p>
         </div>
         <div class="workspace-meta">
+          <span class="engine-label">Engine: {{ engineLabel(workflow.engineType) }}</span>
           <span *ngIf="saveMessage" class="save-message">{{ saveMessage }}</span>
           <span>Updated {{ workflow.updatedAt | date: 'short' }}</span>
         </div>
@@ -61,8 +69,65 @@
         <app-properties-panel />
       </div>
       <div class="panel-content" [class.hidden]="activePanel !== 'xml'">
-        <app-xml-viewer [xml]="workflow.xml" />
+        <app-xml-viewer [xml]="workflow.bpmnXml" />
       </div>
     </aside>
   </section>
+
+  <div *ngIf="engineChoice" class="modal-backdrop" role="presentation">
+    <section
+      class="engine-dialog"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="engine-choice-title"
+    >
+      <h2 id="engine-choice-title">{{ engineChoice.title }}</h2>
+      <label class="name-field">
+        Name
+        <input
+          type="text"
+          name="workflowName"
+          [(ngModel)]="engineChoice.name"
+          autocomplete="off"
+          autofocus
+        />
+      </label>
+
+      <p *ngIf="engineChoice.showEngine">{{ engineChoice.enginePrompt }}</p>
+
+      <fieldset *ngIf="engineChoice.showEngine">
+        <legend class="visually-hidden">Target engine</legend>
+        <label>
+          <input
+            type="radio"
+            name="engineType"
+            [value]="engineType.CAMUNDA_7"
+            [(ngModel)]="engineChoice.selectedEngineType"
+          />
+          Camunda 7
+        </label>
+        <label>
+          <input
+            type="radio"
+            name="engineType"
+            [value]="engineType.CAMUNDA_8"
+            [(ngModel)]="engineChoice.selectedEngineType"
+          />
+          Camunda 8
+        </label>
+      </fieldset>
+
+      <div class="dialog-actions">
+        <button type="button" (click)="cancelEngineChoice()">Cancel</button>
+        <button
+          type="button"
+          class="primary"
+          [disabled]="!engineChoice.name.trim()"
+          (click)="resolveEngineChoice()"
+        >
+          {{ engineChoice.submitLabel }}
+        </button>
+      </div>
+    </section>
+  </div>
 </main>

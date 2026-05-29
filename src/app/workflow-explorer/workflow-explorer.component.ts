@@ -10,18 +10,33 @@ import { Workflow } from '../models/workflow.model';
     <aside>
       <header>
         <h2>Workflows</h2>
-        <span>Local samples</span>
+        <span>Local workflows</span>
       </header>
 
-      <button
+      <div
         *ngFor="let workflow of workflows"
-        type="button"
+        class="workflow-row"
         [class.active]="workflow.id === activeWorkflowId"
-        (click)="workflowSelected.emit(workflow)"
       >
-        <strong>{{ workflow.name }}</strong>
-        <span>{{ workflow.description }}</span>
-      </button>
+        <button
+          type="button"
+          class="workflow-select"
+          (click)="workflowSelected.emit(workflow)"
+        >
+          <strong>{{ workflow.name }}</strong>
+          <span>{{ workflow.description }}</span>
+        </button>
+        <button
+          *ngIf="deletableWorkflowIds.includes(workflow.id)"
+          type="button"
+          class="delete-button"
+          title="Delete local workflow"
+          aria-label="Delete local workflow"
+          (click)="workflowDeleted.emit(workflow)"
+        >
+          Delete
+        </button>
+      </div>
     </aside>
   `,
   styleUrl: './workflow-explorer.component.scss'
@@ -29,5 +44,7 @@ import { Workflow } from '../models/workflow.model';
 export class WorkflowExplorerComponent {
   @Input({ required: true }) workflows: Workflow[] = [];
   @Input({ required: true }) activeWorkflowId = '';
+  @Input() deletableWorkflowIds: string[] = [];
   @Output() workflowSelected = new EventEmitter<Workflow>();
+  @Output() workflowDeleted = new EventEmitter<Workflow>();
 }
