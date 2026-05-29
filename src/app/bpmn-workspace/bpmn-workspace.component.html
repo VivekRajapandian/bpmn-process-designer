@@ -16,7 +16,9 @@
     <app-workflow-explorer
       [workflows]="samples"
       [activeWorkflowId]="workflow.id"
+      [deletableWorkflowIds]="deletableWorkflowIds"
       (workflowSelected)="selectWorkflow($event)"
+      (workflowDeleted)="deleteWorkflow($event)"
     />
 
     <section class="modeler">

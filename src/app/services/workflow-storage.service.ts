@@ -31,12 +31,27 @@ export class WorkflowStorageService {
     localStorage.setItem(WORKFLOW_KEY, JSON.stringify(workflow));
   }
 
+  deleteWorkflow(id: string): void {
+    const workflows = this.loadSavedWorkflows();
+    delete workflows[id];
+
+    localStorage.setItem(WORKFLOWS_KEY, JSON.stringify(workflows));
+
+    if (this.load()?.id === id) {
+      localStorage.removeItem(WORKFLOW_KEY);
+    }
+  }
+
   hasSavedWorkflow(): boolean {
     return localStorage.getItem(WORKFLOW_KEY) !== null;
   }
 
   loadWorkflow(id: string): Workflow | null {
     return this.loadSavedWorkflows()[id] ?? null;
+  }
+
+  loadWorkflowIds(): string[] {
+    return Object.keys(this.loadSavedWorkflows());
   }
 
   hydrate(workflows: Workflow[]): Workflow[] {

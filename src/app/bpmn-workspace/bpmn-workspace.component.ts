@@ -70,6 +70,10 @@ export class BpmnWorkspaceComponent implements AfterViewInit, OnDestroy {
   readonly workflowStatus = WorkflowStatus;
   readonly engineType = EngineType;
 
+  get deletableWorkflowIds(): string[] {
+    return this.workflowState.deletableWorkflowIds;
+  }
+
   private readonly subscription = new Subscription();
   private isImporting = false;
 
@@ -155,6 +159,29 @@ export class BpmnWorkspaceComponent implements AfterViewInit, OnDestroy {
     }
 
     await this.loadWorkflow(this.workflowState.resolveWorkflow(workflow), false);
+  }
+
+  async deleteWorkflow(workflow: Workflow): Promise<void> {
+    if (
+      !window.confirm(`Delete "${workflow.name}" from local workflows?`)
+    ) {
+      return;
+    }
+
+    const wasActive = workflow.id === this.workflow.id;
+
+    if (wasActive && !this.canDiscardChanges()) {
+      return;
+    }
+
+    const nextWorkflow = this.workflowState.deleteWorkflow(workflow.id);
+    this.samples = this.workflowState.samples;
+
+    if (wasActive) {
+      await this.loadWorkflow(nextWorkflow, false);
+    }
+
+    this.saveMessage = `Deleted "${workflow.name}" from local storage`;
   }
 
   async importDiagram(file: File): Promise<void> {

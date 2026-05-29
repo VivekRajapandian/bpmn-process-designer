@@ -83,7 +83,6 @@ Use **Export** to download an actual `.bpmn` file to disk.
 - No authentication, RBAC, or user accounts.
 - No Camunda deployment action inside the app.
 - No collaboration or version history.
-- No AI workflow generation.
 - Validation is intentionally lightweight and does not replace Camunda 7 or Camunda 8 engine/deployment validation.
 - No conversion or migration tooling between Camunda 7 and Camunda 8.
 - Engine-specific moddle descriptors are intentionally not loaded together because Camunda 7 and Zeebe both define some properties such as `modelerTemplate`.
@@ -92,7 +91,7 @@ Use **Export** to download an actual `.bpmn` file to disk.
 
 ## Future Phases
 
-The MVP does not include a backend, login, Camunda deployment, API integration, RBAC, version history, collaboration, or AI generation. Those are deliberate future phases.
+The MVP does not include a backend, login, Camunda deployment, API integration, RBAC, version history, or collaboration. Those are deliberate future phases.
 
 ## Setup
 
@@ -201,7 +200,3 @@ localStorage.removeItem('bpmn-process-designer.current-workflow');
 localStorage.removeItem('bpmn-process-designer.saved-workflows');
 location.reload();
 ```
-docs/
-  engine-and-workflow-management.md
-  source-references.md
-  file-wise-explanation/
