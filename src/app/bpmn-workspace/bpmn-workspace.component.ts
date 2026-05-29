@@ -24,6 +24,10 @@ import { WorkflowExplorerComponent } from '../workflow-explorer/workflow-explore
 import { XmlViewerComponent } from '../xml-viewer/xml-viewer.component';
 
 type RightPanel = 'properties' | 'xml';
+interface WorkflowDetails {
+  name: string;
+  engineType: EngineType;
+}
 
 @Component({
   selector: 'app-bpmn-workspace',
@@ -54,9 +58,12 @@ export class BpmnWorkspaceComponent implements AfterViewInit, OnDestroy {
   saveMessage = '';
   engineChoice?: {
     title: string;
-    prompt: string;
-    selected: EngineType;
-    resolve: (engineType: EngineType | null) => void;
+    enginePrompt?: string;
+    name: string;
+    selectedEngineType: EngineType;
+    showEngine: boolean;
+    submitLabel: string;
+    resolve: (details: WorkflowDetails | null) => void;
   };
 
   samples: Workflow[] = [];
@@ -122,16 +129,24 @@ export class BpmnWorkspaceComponent implements AfterViewInit, OnDestroy {
       return;
     }
 
-    const engineType = await this.selectEngineType(
+    const details = await this.editWorkflowDetails(
       'Create New BPMN Diagram',
-      'Target Engine:'
+      'Untitled BPMN Diagram',
+      'Target Engine:',
+      true,
+      'Create'
     );
 
-    if (!engineType) {
+    if (!details) {
       return;
     }
 
-    await this.loadWorkflow(this.sampleWorkflows.createBlankWorkflow(engineType), true);
+    const workflow = {
+      ...this.sampleWorkflows.createBlankWorkflow(details.engineType),
+      name: details.name
+    };
+
+    await this.loadWorkflow(workflow, true);
   }
 
   async selectWorkflow(workflow: Workflow): Promise<void> {
@@ -148,20 +163,23 @@ export class BpmnWorkspaceComponent implements AfterViewInit, OnDestroy {
     }
 
     const xml = await file.text();
-    const engineType = await this.selectEngineType(
+    const details = await this.editWorkflowDetails(
       'Import BPMN Diagram',
-      'Which engine should this workflow target?'
+      file.name.replace(/\.(bpmn|xml)$/i, '') || 'Imported BPMN',
+      'Which engine should this workflow target?',
+      true,
+      'Import'
     );
 
-    if (!engineType) {
+    if (!details) {
       return;
     }
 
     const now = new Date().toISOString();
     const workflow: Workflow = {
       id: `import-${Date.now()}`,
-      name: file.name.replace(/\.(bpmn|xml)$/i, '') || 'Imported BPMN',
-      engineType,
+      name: details.name,
+      engineType: details.engineType,
       bpmnXml: xml,
       createdAt: now,
       updatedAt: now,
@@ -222,8 +240,25 @@ export class BpmnWorkspaceComponent implements AfterViewInit, OnDestroy {
     this.activePanel = panel;
   }
 
-  resolveEngineChoice(engineType: EngineType): void {
-    this.engineChoice?.resolve(engineType);
+  renameWorkflow(): void {
+    void this.renameCurrentWorkflow();
+  }
+
+  resolveEngineChoice(): void {
+    if (!this.engineChoice) {
+      return;
+    }
+
+    const name = this.engineChoice.name.trim();
+
+    if (!name) {
+      return;
+    }
+
+    this.engineChoice.resolve({
+      name,
+      engineType: this.engineChoice.selectedEngineType
+    });
     this.engineChoice = undefined;
   }
 
@@ -234,6 +269,24 @@ export class BpmnWorkspaceComponent implements AfterViewInit, OnDestroy {
 
   engineLabel(engineType: EngineType): string {
     return engineType === EngineType.CAMUNDA_7 ? 'Camunda 7' : 'Camunda 8';
+  }
+
+  private async renameCurrentWorkflow(): Promise<void> {
+    const details = await this.editWorkflowDetails(
+      'Rename BPMN Diagram',
+      this.workflow.name,
+      undefined,
+      false,
+      'Rename'
+    );
+
+    if (!details || details.name === this.workflow.name) {
+      return;
+    }
+
+    const renamed = this.workflowState.renameWorkflow(details.name);
+    this.samples = this.workflowState.samples;
+    this.saveMessage = `Renamed at ${new Date(renamed.updatedAt).toLocaleTimeString()}`;
   }
 
   private async loadWorkflow(workflow: Workflow, dirty: boolean): Promise<void> {
@@ -283,12 +336,21 @@ export class BpmnWorkspaceComponent implements AfterViewInit, OnDestroy {
       .replace(/(^-|-$)/g, '') || 'workflow';
   }
 
-  private selectEngineType(title: string, prompt: string): Promise<EngineType | null> {
+  private editWorkflowDetails(
+    title: string,
+    name: string,
+    enginePrompt: string | undefined,
+    showEngine: boolean,
+    submitLabel: string
+  ): Promise<WorkflowDetails | null> {
     return new Promise((resolve) => {
       this.engineChoice = {
         title,
-        prompt,
-        selected: EngineType.CAMUNDA_8,
+        enginePrompt,
+        name,
+        selectedEngineType: this.workflow?.engineType ?? EngineType.CAMUNDA_8,
+        showEngine,
+        submitLabel,
         resolve
       };
     });

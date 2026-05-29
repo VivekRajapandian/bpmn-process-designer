@@ -45,6 +45,28 @@ h1 {
   font-size: 18px;
 }
 
+.title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.rename-button {
+  min-height: 28px;
+  padding: 0 9px;
+  background: #f7f9fc;
+  border: 1px solid #ccd5e1;
+  border-radius: 6px;
+  color: #1d2b42;
+  cursor: pointer;
+  font: 700 12px/1 system-ui, sans-serif;
+}
+
+.rename-button:hover {
+  background: #edf2f8;
+}
+
 p,
 .canvas-header span {
   color: #647386;
@@ -140,6 +162,28 @@ p {
   margin: 10px 0 16px;
 }
 
+.name-field {
+  display: grid;
+  gap: 6px;
+  margin-top: 16px;
+  color: #1d2b42;
+  font-weight: 700;
+}
+
+.name-field input {
+  min-height: 38px;
+  padding: 0 10px;
+  border: 1px solid #ccd5e1;
+  border-radius: 6px;
+  color: #13233b;
+  font: 600 14px/1.2 system-ui, sans-serif;
+}
+
+.name-field input:focus {
+  border-color: #1663c7;
+  outline: 2px solid rgb(22 99 199 / 18%);
+}
+
 fieldset {
   display: grid;
   gap: 10px;
@@ -182,6 +226,11 @@ fieldset {
   background: #1663c7;
   border-color: #1663c7;
   color: #ffffff;
+}
+
+.dialog-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 .visually-hidden {

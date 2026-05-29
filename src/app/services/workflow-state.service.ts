@@ -47,12 +47,29 @@ export class WorkflowStateService {
   }
 
   setXml(xml: string, dirty = true): void {
-    this.workflowSubject.next({
+    const nextWorkflow = {
       ...this.workflow,
       bpmnXml: xml,
       updatedAt: new Date().toISOString(),
       status: dirty ? WorkflowStatus.Dirty : WorkflowStatus.Clean
-    });
+    };
+
+    this.upsertWorkflow(nextWorkflow);
+    this.workflowSubject.next(nextWorkflow);
+  }
+
+  renameWorkflow(name: string): Workflow {
+    const renamed = {
+      ...this.workflow,
+      name,
+      updatedAt: new Date().toISOString()
+    };
+
+    this.workflowStorage.save(renamed);
+    this.upsertWorkflow(renamed);
+    this.workflowSubject.next(renamed);
+
+    return renamed;
   }
 
   setProblems(problems: WorkflowProblem[]): void {

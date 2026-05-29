@@ -108,7 +108,7 @@ export class BpmnModelerAdapterService {
   async importXml(xml: string): Promise<void> {
     this.ensureModeler();
     await this.modeler.importXML(xml);
-    this.zoomFit();
+    await this.zoomFitWhenReady();
   }
 
   async saveXml(): Promise<string> {
@@ -135,6 +135,10 @@ export class BpmnModelerAdapterService {
 
   zoomFit(): void {
     this.ensureModeler();
+    if (!this.hasMeasurableCanvas()) {
+      return;
+    }
+
     this.modeler.get('canvas').zoom('fit-viewport', 'auto');
     this.zoomLevel = 1;
   }
@@ -173,6 +177,42 @@ export class BpmnModelerAdapterService {
   private commandStack(): any {
     this.ensureModeler();
     return this.modeler.get('commandStack');
+  }
+
+  private async zoomFitWhenReady(): Promise<void> {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      await this.nextAnimationFrame();
+
+      if (!this.hasMeasurableCanvas()) {
+        continue;
+      }
+
+      try {
+        this.zoomFit();
+      } catch {
+        this.setZoom(1);
+      }
+
+      return;
+    }
+  }
+
+  private hasMeasurableCanvas(): boolean {
+    const bounds = this.canvas?.getBoundingClientRect();
+
+    return Boolean(
+      bounds &&
+        Number.isFinite(bounds.width) &&
+        Number.isFinite(bounds.height) &&
+        bounds.width > 0 &&
+        bounds.height > 0
+    );
+  }
+
+  private nextAnimationFrame(): Promise<void> {
+    return new Promise((resolve) => {
+      requestAnimationFrame(() => resolve());
+    });
   }
 
   private ensureModeler(): void {
