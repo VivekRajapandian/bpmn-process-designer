@@ -20,7 +20,7 @@
 
 .modeler {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) 190px;
+  grid-template-rows: auto auto minmax(0, 1fr) 190px;
   min-width: 0;
   min-height: 0;
 }
@@ -92,6 +92,23 @@ p {
 .engine-label {
   color: #1d4f91;
   font-weight: 700;
+}
+
+.play-mode-panel {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 38px;
+  padding: 8px 16px;
+  background: #f7fbf9;
+  border-bottom: 1px solid #d8dee8;
+  color: #4f5f72;
+  font-size: 13px;
+}
+
+.play-mode-panel strong {
+  color: #116149;
+  font-size: 13px;
 }
 
 .right-panel {

@@ -36,6 +36,20 @@ Milestone 1 is about proving the technical foundation, not recreating the full C
 - Basic validation for invalid XML, missing process names, and unnamed tasks.
 - Import and export for `.bpmn` and `.xml` files.
 
+## Play Mode Foundation
+
+This release adds the first foundation for a custom Play Mode: frontend-only BPMN token simulation inside the canvas.
+
+The simulation is powered by `bpmn-js-token-simulation`, integrated as a `bpmn-js` additional module. Simulation controls are provided by the plugin inside the BPMN canvas.
+
+This is not Camunda 8 Web Modeler Play Mode. It does not deploy BPMN to Camunda, call Zeebe or Orchestration Cluster APIs, start real process instances, or use any backend. It is a client-side foundation for a future custom Play Mode.
+
+Future Play Mode phases:
+
+- Phase 2: Gateway path handling, variable input, and condition evaluation.
+- Phase 3: Deploy the current BPMN to Camunda 8, start a process instance, and poll runtime state.
+- Phase 4: User task completion, job completion or mock completion, variables panel, incident panel, and runtime overlays.
+
 ## Camunda Engine Targeting
 
 The app supports workflows that are explicitly marked for Camunda 7 or Camunda 8. Users choose the workflow name and target engine when creating a new diagram or importing an existing `.bpmn` / `.xml` file. Camunda 8 is the default selection for new diagrams.
@@ -60,6 +74,7 @@ Library-provided features:
 - `camunda-bpmn-moddle` lets the Camunda 7 modeler parse and write Camunda Platform extension XML.
 - `zeebe-bpmn-moddle` lets the Camunda 8 modeler parse and write Zeebe extension XML.
 - `camunda-bpmn-js-behaviors` provides Camunda 7 and Camunda 8 behavior modules that keep engine-specific extension elements consistent while editing.
+- `bpmn-js-token-simulation` provides frontend-only token simulation and its in-canvas simulation controls.
 - BPMN package CSS provides the BPMN icons, canvas styling, palette/toolbox visuals, and properties panel styling.
 
 Custom Angular features:
@@ -82,6 +97,7 @@ Use **Export** to download an actual `.bpmn` file to disk.
 - No backend or database.
 - No authentication, RBAC, or user accounts.
 - No Camunda deployment action inside the app.
+- Play Mode is client-side token simulation only and does not execute BPMN on Camunda.
 - No collaboration or version history.
 - Validation is intentionally lightweight and does not replace Camunda 7 or Camunda 8 engine/deployment validation.
 - No conversion or migration tooling between Camunda 7 and Camunda 8.
@@ -128,6 +144,10 @@ npm run test
 ## Project Structure
 
 ```text
+docs/
+  feature-wise-explanation/  Feature flow documentation, including Play Mode token simulation
+  file-wise-explanation/     File-level implementation notes
+
 src/app/
   bpmn-workspace/        Main page layout and workflow orchestration
   bpmn-canvas/           Canvas host for bpmn-js
@@ -159,7 +179,7 @@ src/app/
 - `xml-viewer/` - Custom Angular read-only panel that displays the current BPMN XML from the modeler.
 - `problems-panel/` - Custom Angular panel that displays local validation results and calls the adapter to focus BPMN elements.
 - `workflow-explorer/` - Custom Angular workflow picker that shows built-in samples plus locally created/imported workflows.
-- `bpmn-modeler-adapter.service.ts` - Custom Angular wrapper around `bpmn-js`; initializes the engine-specific modeler stack, imports/exports XML, handles undo/redo/zoom/focus, listens to modeler changes, and destroys the modeler.
+- `bpmn-modeler-adapter.service.ts` - Custom Angular wrapper around `bpmn-js`; initializes the engine-specific modeler stack, loads `bpmn-js-token-simulation`, imports/exports XML, handles undo/redo/zoom/focus, listens to modeler changes, and destroys the modeler.
 - `workflow-state.service.ts` - Custom Angular/RxJS state service for current workflow, dirty state, workflow list, renaming, saved workflows, and validation problems.
 - `workflow-storage.service.ts` - Custom browser persistence service that stores workflow metadata and BPMN XML in `localStorage`.
 - `workflow-validation.service.ts` - Custom lightweight validator for XML parsing, process/task naming, simple gateway rules, and Camunda 8 Zeebe task definition checks.
