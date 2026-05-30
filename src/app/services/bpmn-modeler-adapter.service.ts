@@ -1,6 +1,7 @@
 import { Injectable, NgZone } from '@angular/core';
 import { Subject } from 'rxjs';
 import Modeler from 'bpmn-js/lib/Modeler';
+import TokenSimulationModule from 'bpmn-js-token-simulation';
 import {
   BpmnPropertiesPanelModule,
   BpmnPropertiesProviderModule,
@@ -77,6 +78,7 @@ export class BpmnModelerAdapterService {
         parent: this.propertiesPanel
       },
       additionalModules: [
+        TokenSimulationModule,
         BpmnPropertiesPanelModule,
         BpmnPropertiesProviderModule,
         CamundaPlatformPropertiesProviderModule,
@@ -94,6 +96,7 @@ export class BpmnModelerAdapterService {
         parent: this.propertiesPanel
       },
       additionalModules: [
+        TokenSimulationModule,
         BpmnPropertiesPanelModule,
         BpmnPropertiesProviderModule,
         ZeebePropertiesProviderModule,
