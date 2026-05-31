@@ -4,22 +4,26 @@ import { firstValueFrom } from 'rxjs';
 import { environment } from '../../../environments/environment';
 
 export interface DeploymentResponse {
-  key: string;
+  deploymentKey: string;
   tenantId: string;
-  processes: Array<{
-    bpmnProcessId: string;
-    version: number;
-    processDefinitionKey: string;
-    resourceName: string;
-  }>;
+  deployments: DeployedProcessDefinition[];
   decisionRequirements: any[];
   form: any;
 }
 
+export interface DeployedProcessDefinition {
+  processDefinitionId: string;
+  processDefinitionVersion: number;
+  processDefinitionKey: string;
+  resourceName: string;
+}
+
 export interface ProcessInstanceResponse {
   processDefinitionKey: string;
-  bpmnProcessId: string;
-  version: number;
+  processDefinitionId?: string;
+  bpmnProcessId?: string;
+  processDefinitionVersion?: number;
+  version?: number;
   processInstanceKey: string;
   tenantId: string;
   creationTimestamp: number;
@@ -33,9 +37,19 @@ export interface Camunda8DeploymentError {
   instance?: string;
 }
 
+interface TokenResponse {
+  access_token: string;
+  expires_in?: number;
+  token_type?: string;
+}
+
 @Injectable({ providedIn: 'root' })
 export class Camunda8ClientService {
   private readonly restAddress = environment.camunda8.restAddress;
+  private readonly authConfig = environment.camunda8.auth;
+  private accessToken?: string;
+  private accessTokenExpiresAt = 0;
+  private tokenRequest?: Promise<string>;
 
   constructor(private readonly http: HttpClient) {}
 
@@ -44,19 +58,21 @@ export class Camunda8ClientService {
     fileName: string = 'process.bpmn'
   ): Promise<DeploymentResponse> {
     try {
-      console.log(`📤 [Camunda8] Deploying BPMN file: "${fileName}" to ${this.restAddress}/v1/deployments`);
+      console.log(`📤 [Camunda8] Deploying BPMN file: "${fileName}" to ${this.restAddress}/v2/deployments`);
 
       const formData = new FormData();
       const file = new File([bpmnXml], fileName, { type: 'application/xml' });
-      formData.append('file', file);
+      formData.append('resources', file);
 
-      const url = `${this.restAddress}/v1/deployments`;
+      const url = `${this.restAddress}/v2/deployments`;
+      const headers = await this.getAuthHeaders();
       const response = await firstValueFrom(
-        this.http.post<DeploymentResponse>(url, formData)
+        this.http.post<DeploymentResponse>(url, formData, { headers })
       );
 
-      console.log(`✅ [Camunda8] Deployment successful - Key: ${response.key}`);
-      console.log(`   Processes deployed:`, response.processes.map(p => p.bpmnProcessId).join(', '));
+      console.log(`✅ [Camunda8] Deployment successful - Key: ${response.deploymentKey}`);
+      console.log(`   Processes deployed:`, response.deployments.map(p => p.processDefinitionId).join(', '));
+
 
       return response;
     } catch (error) {
@@ -65,26 +81,28 @@ export class Camunda8ClientService {
   }
 
   async startProcessInstance(
-    bpmnProcessId: string,
+    processDefinitionId: string,
+    processDefinitionVersion: number,
     variables?: Record<string, any>
   ): Promise<ProcessInstanceResponse> {
     try {
-      const url = `${this.restAddress}/v1/processes/${encodeURIComponent(
-        bpmnProcessId
-      )}/instances`;
-
-      console.log(`🚀 [Camunda8] Starting process instance for: "${bpmnProcessId}" at ${url}`);
+      const url = `${this.restAddress}/v2/process-instances`;
+      console.log(`🚀 [Camunda8] Starting process instance for: "${processDefinitionId}" v${processDefinitionVersion} at ${url}`);
 
       const body = {
+        processDefinitionId,
+        processDefinitionVersion,
         variables: variables || {}
       };
 
       const response = await firstValueFrom(
-        this.http.post<ProcessInstanceResponse>(url, body)
+        this.http.post<ProcessInstanceResponse>(url, body, {
+          headers: await this.getAuthHeaders()
+        })
       );
 
       console.log(`✅ [Camunda8] Process instance started - Key: ${response.processInstanceKey}`);
-      console.log(`   Process: ${response.bpmnProcessId} (v${response.version})`);
+      console.log(`   Process: ${response.processDefinitionId || response.bpmnProcessId} (v${response.processDefinitionVersion || response.version})`);
 
       return response;
     } catch (error) {
@@ -102,7 +120,12 @@ export class Camunda8ClientService {
       console.log(`⚙️  [Camunda8] Starting deployAndStart workflow for process: "${bpmnProcessId}"`);
 
       const deployment = await this.deployBpmnXml(bpmnXml, fileName);
-      const instance = await this.startProcessInstance(bpmnProcessId, variables);
+      const processDefinition = this.findDeployedProcessDefinition(deployment, bpmnProcessId);
+      const instance = await this.startProcessInstance(
+        processDefinition.processDefinitionId,
+        processDefinition.processDefinitionVersion,
+        variables
+      );
 
       console.log(`🎯 [Camunda8] deployAndStart workflow complete`);
 
@@ -113,6 +136,81 @@ export class Camunda8ClientService {
     } catch (error) {
       throw this.handleError(error, 'Failed to deploy and start process');
     }
+  }
+
+  findDeployedProcessDefinition(
+    deployment: DeploymentResponse,
+    processDefinitionId: string
+  ): DeployedProcessDefinition {
+    const processDefinition = deployment.deployments.find(
+      (deployed) => deployed.processDefinitionId === processDefinitionId
+    );
+
+    if (!processDefinition) {
+      throw new Error(
+        `Deployment did not include process definition "${processDefinitionId}".`
+      );
+    }
+
+    return processDefinition;
+  }
+
+  private async getAuthHeaders(): Promise<HttpHeaders> {
+    if (environment.camunda8.authStrategy !== 'BEARER') {
+      return new HttpHeaders();
+    }
+
+    const token = await this.getAccessToken();
+    return new HttpHeaders({
+      Authorization: `Bearer ${token}`
+    });
+  }
+
+  private async getAccessToken(): Promise<string> {
+    const now = Date.now();
+    const refreshBufferMs = 30_000;
+
+    if (this.accessToken && now < this.accessTokenExpiresAt - refreshBufferMs) {
+      return this.accessToken;
+    }
+
+    if (!this.tokenRequest) {
+      this.tokenRequest = this.requestAccessToken().finally(() => {
+        this.tokenRequest = undefined;
+      });
+    }
+
+    return this.tokenRequest;
+  }
+
+  private async requestAccessToken(): Promise<string> {
+    if (!this.authConfig) {
+      throw new Error('Camunda bearer authentication is enabled but no auth config was provided.');
+    }
+
+    const body = new URLSearchParams({
+      client_id: this.authConfig.clientId,
+      client_secret: this.authConfig.clientSecret,
+      grant_type: 'client_credentials',
+      audience: this.authConfig.audience
+    });
+
+    const response = await firstValueFrom(
+      this.http.post<TokenResponse>(this.authConfig.tokenUrl, body.toString(), {
+        headers: new HttpHeaders({
+          'Content-Type': 'application/x-www-form-urlencoded'
+        })
+      })
+    );
+
+    if (!response.access_token) {
+      throw new Error('Camunda token endpoint did not return an access token.');
+    }
+
+    this.accessToken = response.access_token;
+    this.accessTokenExpiresAt = Date.now() + (response.expires_in || 300) * 1000;
+
+    return response.access_token;
   }
 
   private handleError(error: any, message: string): Error {

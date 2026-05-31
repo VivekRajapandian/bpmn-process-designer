@@ -20,7 +20,7 @@
 
 .modeler {
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr) 190px;
+  grid-template-rows: auto auto auto minmax(0, 1fr) 190px;
   min-width: 0;
   min-height: 0;
 }

@@ -1,7 +1,10 @@
 import { Injectable } from '@angular/core';
 import { BehaviorSubject, Observable } from 'rxjs';
 import { BpmnModelerAdapterService } from '../../services/bpmn-modeler-adapter.service';
-import { Camunda8ClientService } from '../camunda8/camunda8-client.service';
+import {
+  Camunda8ClientService,
+  DeployedProcessDefinition
+} from '../camunda8/camunda8-client.service';
 
 export interface RuntimeStatus {
   state:
@@ -18,8 +21,9 @@ export interface RuntimeStatus {
 
 /**
  * Integrates the token simulator with Camunda 8 runtime.
- * When token simulation starts, automatically deploys the BPMN XML
- * and starts a process instance in the local Camunda 8 runtime.
+ * When token simulation mode starts, automatically deploys the BPMN XML.
+ * When the simulation play button is clicked, starts a process instance
+ * in the local Camunda 8 runtime.
  */
 @Injectable({ providedIn: 'root' })
 export class PlayRuntimeIntegrationService {
@@ -29,6 +33,9 @@ export class PlayRuntimeIntegrationService {
   });
 
   private deploymentTriggered = false;
+  private instanceStarted = false;
+  private deploymentPromise?: Promise<void>;
+  private deployedProcessDefinition?: DeployedProcessDefinition;
 
   constructor(
     private readonly modelerAdapter: BpmnModelerAdapterService,
@@ -45,7 +52,7 @@ export class PlayRuntimeIntegrationService {
       console.log('🔧 [PlayRuntime] Initializing PlayRuntimeIntegrationService');
       console.log('👂 [PlayRuntime] Subscribing to token simulator events...');
 
-      // Listen for simulation play event
+      // Listen for simulation play event to start a process instance
       eventBus.on('tokenSimulation.playSimulation', () => {
         console.log('🎯 [PlayRuntime] Event received: tokenSimulation.playSimulation');
         this.handleSimulationPlay();
@@ -54,7 +61,7 @@ export class PlayRuntimeIntegrationService {
       // Reset the deployment flag when simulation is reset
       eventBus.on('tokenSimulation.resetSimulation', () => {
         console.log('🔄 [PlayRuntime] Event received: tokenSimulation.resetSimulation - Resetting deployment flag');
-        this.resetDeploymentFlag();
+        this.resetRuntimeSession();
       });
 
       // Reset when simulation is paused (allow re-triggering on next play)
@@ -66,9 +73,12 @@ export class PlayRuntimeIntegrationService {
       // Reset on toggle off
       eventBus.on('tokenSimulation.toggleMode', (event: any) => {
         console.log(`🔀 [PlayRuntime] Event received: tokenSimulation.toggleMode (active: ${event.active})`);
-        if (!event.active) {
+        if (event.active) {
+          console.log('🟢 [PlayRuntime] Token simulation toggled ON - Deploying BPMN');
+          this.handleSimulationModeStart();
+        } else {
           console.log('🔴 [PlayRuntime] Token simulation toggled OFF - Resetting deployment flag');
-          this.resetDeploymentFlag();
+          this.resetRuntimeSession();
         }
       });
 
@@ -95,28 +105,32 @@ export class PlayRuntimeIntegrationService {
     return this.status$.value;
   }
 
-  /**
-   * Reset the deployment flag to allow another deployment attempt.
-   */
-  private resetDeploymentFlag(): void {
-    console.log('🔁 [PlayRuntime] Deployment flag reset - Next simulation will trigger new deployment');
+  private resetRuntimeSession(): void {
+    console.log('🔁 [PlayRuntime] Runtime session reset - Next simulation mode will trigger new deployment');
     this.deploymentTriggered = false;
+    this.instanceStarted = false;
+    this.deploymentPromise = undefined;
+    this.deployedProcessDefinition = undefined;
     this.updateStatus('waiting', 'Waiting for token simulation');
   }
 
   /**
-   * Handle when token simulation starts playing.
+   * Handle when token simulation mode starts.
    */
-  private async handleSimulationPlay(): Promise<void> {
+  private handleSimulationModeStart(): void {
     if (this.deploymentTriggered) {
       console.log('ℹ️ [PlayRuntime] Deployment already triggered for this simulation session');
       return;
     }
 
     this.deploymentTriggered = true;
+    this.deploymentPromise = this.deployCurrentDiagram();
+    void this.deploymentPromise.catch(() => undefined);
+  }
 
+  private async deployCurrentDiagram(): Promise<void> {
     try {
-      console.log('🎬 [PlayRuntime] Token Simulation STARTED - Initiating Camunda 8 deployment workflow');
+      console.log('🎬 [PlayRuntime] Token Simulation MODE STARTED - Initiating Camunda 8 deployment workflow');
 
       this.updateStatus('deploying', 'Exporting BPMN and deploying...');
 
@@ -136,29 +150,21 @@ export class PlayRuntimeIntegrationService {
 
       console.log(`📋 [PlayRuntime] Process ID extracted: "${processId}"`);
 
-      // Deploy and start
+      // Deploy only. The process instance starts when the simulation play button is clicked.
       console.log(`🚀 [PlayRuntime] Starting Camunda 8 deployment for process: "${processId}"`);
       this.updateStatus('deploying', `Deploying BPMN (Process ID: ${processId})...`);
 
-      const result = await this.camunda8Client.deployAndStart(
-        bpmnXml,
-        processId,
-        'process.bpmn'
-      );
-
-      const deploymentKey = result.deployment.key;
-      const processInstanceKey = result.instance.processInstanceKey;
+      const deployment = await this.camunda8Client.deployBpmnXml(bpmnXml, 'process.bpmn');
+      const deploymentKey = deployment.deploymentKey;
+      const processDefinition =
+        this.camunda8Client.findDeployedProcessDefinition(deployment, processId);
 
       console.log(`✅ [PlayRuntime] BPMN Deployment SUCCESS - Deployment Key: "${deploymentKey}"`);
-      console.log(`✅ [PlayRuntime] Process Instance START SUCCESS - Instance Key: "${processInstanceKey}"`);
 
-      this.updateStatus(
-        'success',
-        `Process instance started: ${processInstanceKey}`,
-        processInstanceKey
-      );
+      this.deployedProcessDefinition = processDefinition;
+      this.updateStatus('success', `BPMN deployed: ${deploymentKey}`);
 
-      console.log('🎉 [PlayRuntime] Camunda 8 integration complete: deployment + instance started');
+      console.log('🎉 [PlayRuntime] Camunda 8 deployment complete; waiting for play to start instance');
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : 'Unknown error occurred';
@@ -169,6 +175,62 @@ export class PlayRuntimeIntegrationService {
 
       // Reset flag on error to allow retry
       this.deploymentTriggered = false;
+      this.deploymentPromise = undefined;
+
+      throw error;
+    }
+  }
+
+  /**
+   * Handle when token simulation starts playing.
+   */
+  private async handleSimulationPlay(): Promise<void> {
+    if (this.instanceStarted) {
+      console.log('ℹ️ [PlayRuntime] Process instance already started for this simulation session');
+      return;
+    }
+
+    try {
+      if (!this.deploymentTriggered) {
+        console.log('ℹ️ [PlayRuntime] Play clicked before deployment; deploying BPMN first');
+        this.handleSimulationModeStart();
+      }
+
+      await this.deploymentPromise;
+
+      if (!this.deployedProcessDefinition) {
+        throw new Error('No deployed process definition available to start a process instance.');
+      }
+
+      this.instanceStarted = true;
+      this.updateStatus(
+        'starting',
+        `Starting process instance (Process ID: ${this.deployedProcessDefinition.processDefinitionId}, version: ${this.deployedProcessDefinition.processDefinitionVersion})...`
+      );
+
+      const instance = await this.camunda8Client.startProcessInstance(
+        this.deployedProcessDefinition.processDefinitionId,
+        this.deployedProcessDefinition.processDefinitionVersion
+      );
+      const processInstanceKey = instance.processInstanceKey;
+
+      console.log(`✅ [PlayRuntime] Process Instance START SUCCESS - Instance Key: "${processInstanceKey}"`);
+
+      this.updateStatus(
+        'success',
+        `Process instance started: ${processInstanceKey}`,
+        processInstanceKey
+      );
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error occurred';
+
+      console.error(`❌ [PlayRuntime] FAILED: ${errorMessage}`, error);
+
+      this.updateStatus('error', errorMessage);
+
+      // Reset instance flag on error to allow retry without redeploying when deployment succeeded.
+      this.instanceStarted = false;
     }
   }
 
