@@ -22,6 +22,8 @@ import { WorkflowValidationService } from '../services/workflow-validation.servi
 import { ToolbarComponent } from '../toolbar/toolbar.component';
 import { WorkflowExplorerComponent } from '../workflow-explorer/workflow-explorer.component';
 import { XmlViewerComponent } from '../xml-viewer/xml-viewer.component';
+import { RuntimeStatusComponent } from '../core/play-mode/runtime-status.component';
+import { PlayRuntimeIntegrationService } from '../core/play-mode/play-runtime-integration.service';
 
 type RightPanel = 'properties' | 'xml';
 interface WorkflowDetails {
@@ -40,7 +42,8 @@ interface WorkflowDetails {
     PropertiesPanelComponent,
     ToolbarComponent,
     WorkflowExplorerComponent,
-    XmlViewerComponent
+    XmlViewerComponent,
+    RuntimeStatusComponent
   ],
   templateUrl: './bpmn-workspace.component.html',
   styleUrl: './bpmn-workspace.component.scss'
@@ -81,7 +84,8 @@ export class BpmnWorkspaceComponent implements AfterViewInit, OnDestroy {
     private readonly bpmnAdapter: BpmnModelerAdapterService,
     private readonly sampleWorkflows: SampleWorkflowsService,
     private readonly workflowState: WorkflowStateService,
-    private readonly workflowValidation: WorkflowValidationService
+    private readonly workflowValidation: WorkflowValidationService,
+    private readonly runtimeIntegration: PlayRuntimeIntegrationService
   ) {
     this.workflow = this.workflowState.workflow;
     this.samples = this.workflowState.samples;
@@ -93,6 +97,9 @@ export class BpmnWorkspaceComponent implements AfterViewInit, OnDestroy {
       this.propertiesPanel.element,
       this.workflow.engineType
     );
+
+    // Initialize Camunda 8 runtime integration for token simulator
+    this.runtimeIntegration.initialize();
 
     this.subscription.add(
       this.workflowState.workflow$.subscribe((workflow) => {

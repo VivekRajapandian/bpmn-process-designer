@@ -50,6 +50,207 @@ Future Play Mode phases:
 - Phase 3: Deploy the current BPMN to Camunda 8, start a process instance, and poll runtime state.
 - Phase 4: User task completion, job completion or mock completion, variables panel, incident panel, and runtime overlays.
 
+## Camunda 8 Runtime Experiment
+
+**Overview**
+
+This release includes an experimental Camunda 8 client integration that deploys BPMN to a local Camunda 8 runtime when token simulation starts. This is **not** a full Camunda 8 Play Mode yet. It only covers deployment and process instance creation with comprehensive logging for debugging and monitoring.
+
+**Architecture**
+
+The integration consists of three main components:
+
+1. **Camunda8ClientService** (`src/app/core/camunda8/camunda8-client.service.ts`)
+   - Handles all REST API communication with local Camunda 8 runtime
+   - Methods: `deployBpmnXml()`, `startProcessInstance()`, `deployAndStart()`
+   - Uses Angular's `HttpClient` for HTTP requests
+   - Includes comprehensive error handling and logging
+
+2. **PlayRuntimeIntegrationService** (`src/app/core/play-mode/play-runtime-integration.service.ts`)
+   - Listens to token simulator events from `bpmn-js-token-simulation`
+   - Coordinates the deployment workflow when simulation starts
+   - Manages a deployment flag to prevent duplicate deployments per session
+   - Exposes status observable for UI updates
+   - Includes detailed event tracking and logging
+
+3. **RuntimeStatusComponent** (`src/app/core/play-mode/runtime-status.component.ts`)
+   - Displays real-time status of deployment and process instance creation
+   - Shows progress states: Idle → Waiting → Deploying → Success/Error
+   - Displays process instance key upon success
+   - Reactive component using OnPush change detection
+
+**How It Works**
+
+When you enable token simulation (click the "Token Simulation" toggle in the canvas):
+
+1. The app detects the `tokenSimulation.playSimulation` event.
+2. It exports the latest BPMN XML from the modeler.
+3. It extracts the executable process ID from the BPMN diagram.
+4. It sends the BPMN to a local Camunda 8 REST API (default: `http://localhost:8080`).
+5. It starts a process instance on the remote runtime.
+6. It displays deployment and process instance status in the UI.
+7. Console logs track every step of the workflow.
+
+**Scope**
+
+This experiment covers only:
+
+- Deployment of BPMN XML to Camunda 8.
+- Starting a process instance.
+- Status display (success/error).
+- Comprehensive console logging for monitoring.
+
+This experiment does **not** cover:
+
+- User task handling or forms.
+- Variable input, output, or inspection.
+- Job execution or polling.
+- Incident handling.
+- Operate overlays or runtime visibility.
+- Full Play Mode simulation.
+
+The token simulation visual animation continues to run client-side. The Camunda 8 deployment and process instance are independent of the local token simulation.
+
+**Configuration**
+
+The Camunda 8 REST address is configured in `src/environments/environment.ts`:
+
+```typescript
+export const environment = {
+  production: false,
+  camunda8: {
+    restAddress: 'http://localhost:8080',
+    authStrategy: 'NONE'
+  }
+};
+```
+
+Update `restAddress` if your local Camunda 8 instance runs on a different host or port.
+
+**Status Panel**
+
+A "Local Camunda 8 Runtime" status panel appears below the play-mode info. It shows:
+
+- **Status**: Current state (Idle, Waiting, Deploying, Starting, Success, Error)
+- **Message**: Detailed feedback about current operation
+- **Instance Key**: Process instance key if deployment and start succeeded
+- **Visual Indicator**: Color-coded indicator matches status state
+
+**Logging and Debugging**
+
+Comprehensive logging is built into both `Camunda8ClientService` and `PlayRuntimeIntegrationService`. All significant events are logged to the browser console with emoji-prefixed categorization:
+
+```
+Service Initialization:
+🔧 [PlayRuntime] Initializing PlayRuntimeIntegrationService
+👂 [PlayRuntime] Subscribing to token simulator events...
+✅ [PlayRuntime] Initialization complete
+
+Token Simulation Start:
+🎯 [PlayRuntime] Event received: tokenSimulation.playSimulation
+🎬 [PlayRuntime] Token Simulation STARTED - Initiating Camunda 8 deployment workflow
+
+Deployment Process:
+📄 [PlayRuntime] BPMN XML exported successfully
+📋 [PlayRuntime] Process ID extracted: "CustomerProcess"
+⚙️  [Camunda8] Starting deployAndStart workflow
+📤 [Camunda8] Deploying BPMN file to http://localhost:8080/v1/deployments
+✅ [Camunda8] Deployment successful - Key: 2251799813685249
+
+Instance Creation:
+🚀 [Camunda8] Starting process instance for: "CustomerProcess"
+✅ [Camunda8] Process instance started - Key: 2251799813685250
+
+Completion:
+🎉 [PlayRuntime] Camunda 8 integration complete: deployment + instance started
+```
+
+**To View Logs**
+
+1. Open the app at `http://localhost:4200`
+2. Press `F12` to open Developer Tools
+3. Go to the **Console** tab
+4. Enable Token Simulation and click Play
+5. Filter logs by typing `[PlayRuntime]` or `[Camunda8]` in the search box
+
+See [LOGGING_GUIDE.md](LOGGING_GUIDE.md) for complete logging reference.
+
+**CORS and Authentication**
+
+This experiment assumes:
+
+- Local Camunda 8 REST API is accessible from the Angular app (no CORS blocking).
+- No authentication is required (`authStrategy: 'NONE'`).
+
+For production or remote Camunda 8 instances, direct Angular-to-Camunda REST access may be blocked by CORS policies or require authentication. In those cases, implement a backend proxy/gateway to bridge the Angular app and the Camunda 8 REST API. The service interface is designed to support that without code changes.
+
+**Guard Behavior**
+
+The app deploys and starts only once per token simulation session. Repeated clicks of the play/pause button do not trigger multiple deployments. Resetting the token simulation (via the reset button) allows another deployment attempt on the next play.
+
+**Error Handling**
+
+If deployment or process start fails:
+
+- An error message is displayed in the status panel and console logs.
+- The deployment flag is reset so you can retry on the next play.
+- The app does not crash.
+
+Common errors with console log examples:
+
+- `❌ [Camunda8] Failed to deploy BPMN XML: Connection refused` → Camunda 8 REST API is not running or not reachable.
+- `❌ [PlayRuntime] FAILED: No executable process found in BPMN diagram` → The BPMN diagram has no executable process element.
+- CORS errors → Your Camunda 8 instance does not allow requests from the Angular origin.
+
+**Testing Locally**
+
+To test this feature:
+
+1. Start a local Camunda 8 instance (e.g., Docker):
+   ```bash
+   docker run -p 8080:8080 camunda/camunda-platform-core:latest
+   ```
+
+2. In another terminal, start the Angular dev server:
+   ```bash
+   npm start
+   ```
+
+3. Open the BPMN designer in your browser at `http://localhost:4200`.
+
+4. Load or create a BPMN diagram with at least one executable process.
+
+5. Open Developer Tools (F12) and go to the Console tab.
+
+6. Click the "Token Simulation" toggle to enable token simulation.
+
+7. Click the Play/Pause button to start simulation.
+
+8. Observe:
+   - Console logs showing the deployment workflow
+   - Status panel transitioning from Deploying → Success
+   - Process instance key displayed if successful
+
+9. Verify the process instance was created in Camunda 8 Operate (if available at `http://localhost:8080`).
+
+**Development Notes**
+
+- The `BpmnModelerAdapterService` was enhanced with `getEventBus()` and `getExecutableProcessId()` methods to support the integration.
+- The `PlayRuntimeIntegrationService` uses a `BehaviorSubject` for reactive status updates.
+- All HTTP calls use Angular's `HttpClient` with `firstValueFrom()` for promise-based async/await.
+- Error handling is designed to be non-blocking and user-friendly.
+
+**Next Steps**
+
+Future phases will add:
+
+- Full Play Mode simulation tied to the Camunda 8 runtime (not just client-side animation).
+- Variable inspection and assignment from the runtime.
+- User task handling and form rendering.
+- Job and incident management.
+- Live runtime state polling and Operate overlays.
+- Proper authentication and backend proxy for production use.
+
 ## Camunda Engine Targeting
 
 The app supports workflows that are explicitly marked for Camunda 7 or Camunda 8. Users choose the workflow name and target engine when creating a new diagram or importing an existing `.bpmn` / `.xml` file. Camunda 8 is the default selection for new diagrams.
@@ -94,10 +295,10 @@ Use **Export** to download an actual `.bpmn` file to disk.
 
 ## Known Limitations
 
-- No backend or database.
+- No backend or database for core modeling features (local storage only).
 - No authentication, RBAC, or user accounts.
-- No Camunda deployment action inside the app.
-- Play Mode is client-side token simulation only and does not execute BPMN on Camunda.
+- Camunda 8 deployment is experimental (local POC only, no production authentication/proxy).
+- Play Mode is primarily client-side token simulation. Experimental Camunda 8 integration does not include variable inspection, user tasks, job handling, or runtime polling.
 - No collaboration or version history.
 - Validation is intentionally lightweight and does not replace Camunda 7 or Camunda 8 engine/deployment validation.
 - No conversion or migration tooling between Camunda 7 and Camunda 8.

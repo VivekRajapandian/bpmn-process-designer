@@ -171,6 +171,59 @@ export class BpmnModelerAdapterService {
     }
   }
 
+  /**
+   * Get the underlying BPMN.js modeler instance.
+   * Use with caution - prefer using adapter methods when possible.
+   */
+  getModeler(): any {
+    this.ensureModeler();
+    return this.modeler;
+  }
+
+  /**
+   * Get the eventBus from the modeler for subscribing to events.
+   */
+  getEventBus(): any {
+    this.ensureModeler();
+    return this.modeler.get('eventBus');
+  }
+
+  /**
+   * Extract the executable process ID from the current modeler.
+   * Returns the first executable process id, or undefined if not found.
+   */
+  getExecutableProcessId(): string | undefined {
+    this.ensureModeler();
+
+    try {
+      const rootElement = this.modeler.get('canvas').getRootElement();
+
+      if (!rootElement) {
+        return undefined;
+      }
+
+      // For process definitions
+      if (rootElement.type === 'bpmn:Process') {
+        return rootElement.id;
+      }
+
+      // For collaboration (find first executable process)
+      if (rootElement.type === 'bpmn:Collaboration' && rootElement.participants) {
+        for (const participant of rootElement.participants) {
+          const process = participant.processRef;
+          if (process?.id && process.isExecutable !== false) {
+            return process.id;
+          }
+        }
+      }
+
+      return undefined;
+    } catch (error) {
+      console.error('Failed to extract process ID from modeler:', error);
+      return undefined;
+    }
+  }
+
   private setZoom(level: number): void {
     this.ensureModeler();
     this.zoomLevel = Math.min(2.4, Math.max(0.3, level));
