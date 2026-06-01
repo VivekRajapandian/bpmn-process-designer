@@ -6,7 +6,7 @@ import { environment } from '../../../environments/environment';
 export interface DeploymentResponse {
   deploymentKey: string;
   tenantId: string;
-  deployments: DeployedProcessDefinition[];
+  deployments: unknown[];
   decisionRequirements: any[];
   form: any;
 }
@@ -71,7 +71,7 @@ export class Camunda8ClientService {
       );
 
       console.log(`✅ [Camunda8] Deployment successful - Key: ${response.deploymentKey}`);
-      console.log(`   Processes deployed:`, response.deployments.map(p => p.processDefinitionId).join(', '));
+      console.log(`   Processes deployed:`, this.getDeployedProcessDefinitions(response).map(p => `${p.processDefinitionId} v${p.processDefinitionVersion}`).join(', '));
 
 
       return response;
@@ -87,13 +87,21 @@ export class Camunda8ClientService {
   ): Promise<ProcessInstanceResponse> {
     try {
       const url = `${this.restAddress}/v2/process-instances`;
+      if (!processDefinitionId || processDefinitionVersion === undefined || processDefinitionVersion === null) {
+        throw new Error(
+          `Cannot start process instance without processDefinitionId and processDefinitionVersion. ` +
+          `Received processDefinitionId="${processDefinitionId}", processDefinitionVersion="${processDefinitionVersion}".`
+        );
+      }
       console.log(`🚀 [Camunda8] Starting process instance for: "${processDefinitionId}" v${processDefinitionVersion} at ${url}`);
 
       const body = {
-        processDefinitionId,
-        processDefinitionVersion,
-        variables: variables || {}
+        "processDefinitionId": processDefinitionId,
+        "processDefinitionVersion": processDefinitionVersion,
+        "variables": variables || {}
       };
+
+      console.log('[Camunda8] Start instance body:', body);
 
       const response = await firstValueFrom(
         this.http.post<ProcessInstanceResponse>(url, body, {
@@ -142,7 +150,8 @@ export class Camunda8ClientService {
     deployment: DeploymentResponse,
     processDefinitionId: string
   ): DeployedProcessDefinition {
-    const processDefinition = deployment.deployments.find(
+    const processDefinitions = this.getDeployedProcessDefinitions(deployment);
+    const processDefinition = processDefinitions.find(
       (deployed) => deployed.processDefinitionId === processDefinitionId
     );
 
@@ -153,6 +162,35 @@ export class Camunda8ClientService {
     }
 
     return processDefinition;
+  }
+
+  getDeployedProcessDefinitions(deployment: DeploymentResponse): DeployedProcessDefinition[] {
+    return deployment.deployments
+      .map((deployed) => this.toDeployedProcessDefinition(deployed))
+      .filter((deployed): deployed is DeployedProcessDefinition => !!deployed);
+  }
+
+  private toDeployedProcessDefinition(deployed: unknown): DeployedProcessDefinition | undefined {
+    const item = deployed as any;
+    const processDefinition =
+      item?.processDefinition ||
+      item?.metadata?.processDefinition ||
+      item?.process ||
+      item;
+
+    const processDefinitionId = processDefinition?.processDefinitionId;
+    const processDefinitionVersion = processDefinition?.processDefinitionVersion;
+
+    if (!processDefinitionId || processDefinitionVersion === undefined || processDefinitionVersion === null) {
+      return undefined;
+    }
+
+    return {
+      processDefinitionId,
+      processDefinitionVersion,
+      processDefinitionKey: processDefinition.processDefinitionKey,
+      resourceName: processDefinition.resourceName
+    };
   }
 
   private async getAuthHeaders(): Promise<HttpHeaders> {
