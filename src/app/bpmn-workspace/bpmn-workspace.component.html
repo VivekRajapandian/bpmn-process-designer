@@ -84,7 +84,13 @@
 
       <app-runtime-status *ngIf="activeMode === 'play'" />
 
-      <app-bpmn-canvas />
+      <div class="canvas-shell" [class.canvas-blocked]="isCanvasBlocked()">
+        <app-bpmn-canvas />
+        <div class="canvas-blocker" *ngIf="isCanvasBlocked()" aria-live="polite">
+          <span class="canvas-blocker-spinner" aria-hidden="true"></span>
+          Deploying to Camunda...
+        </div>
+      </div>
 
       <app-problems-panel
         [problems]="problems"

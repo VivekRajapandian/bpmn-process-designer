@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, ChangeDetectionStrategy } from '@angular/core';
+import { ChangeDetectorRef, Component, OnInit, OnDestroy, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
@@ -12,11 +12,17 @@ import { PlayRuntimeIntegrationService, RuntimeStatus } from '../../core/play-mo
   template: `
     <div class="runtime-status-panel" [class]="'state-' + currentStatus.state">
       <div class="runtime-status-header">
+        <span class="runtime-status-spinner" *ngIf="isBusy(currentStatus.state)" aria-hidden="true"></span>
         <span class="runtime-status-title">Local Camunda 8 Runtime</span>
         <span class="runtime-status-indicator" [class]="'indicator-' + currentStatus.state"></span>
       </div>
 
       <div class="runtime-status-content">
+        <div class="loading-pill" *ngIf="isBusy(currentStatus.state)">
+          <span class="loading-spinner" aria-hidden="true"></span>
+          Loading...
+        </div>
+
         <div class="status-line">
           <span class="status-label">Status:</span>
           <span class="status-value">{{ getStatusLabel(currentStatus.state) }}</span>
@@ -43,7 +49,10 @@ export class RuntimeStatusComponent implements OnInit, OnDestroy {
 
   private readonly destroy$ = new Subject<void>();
 
-  constructor(private readonly runtimeService: PlayRuntimeIntegrationService) {}
+  constructor(
+    private readonly runtimeService: PlayRuntimeIntegrationService,
+    private readonly changeDetector: ChangeDetectorRef
+  ) {}
 
   ngOnInit(): void {
     this.runtimeService
@@ -51,6 +60,7 @@ export class RuntimeStatusComponent implements OnInit, OnDestroy {
       .pipe(takeUntil(this.destroy$))
       .subscribe((status) => {
         this.currentStatus = status;
+        this.changeDetector.markForCheck();
       });
   }
 
@@ -70,5 +80,9 @@ export class RuntimeStatusComponent implements OnInit, OnDestroy {
     };
 
     return labels[state] || 'Unknown';
+  }
+
+  isBusy(state: RuntimeStatus['state']): boolean {
+    return state === 'deploying' || state === 'starting';
   }
 }

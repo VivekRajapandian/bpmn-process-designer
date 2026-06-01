@@ -25,6 +25,7 @@ import { XmlViewerComponent } from '../xml-viewer/xml-viewer.component';
 import { RuntimeStatusComponent } from '../core/play-mode/runtime-status.component';
 import {
   PlayRuntimeIntegrationService,
+  RuntimeStatus,
   TaskHandlingMode
 } from '../core/play-mode/play-runtime-integration.service';
 
@@ -65,6 +66,10 @@ export class BpmnWorkspaceComponent implements AfterViewInit, OnDestroy {
   activeMode: WorkspaceMode = 'design';
   tokenSimulationActive = false;
   taskHandlingMode: TaskHandlingMode = 'manual';
+  runtimeStatus: RuntimeStatus = {
+    state: 'idle',
+    message: 'Play mode is off'
+  };
   saveMessage = '';
   engineChoice?: {
     title: string;
@@ -126,6 +131,12 @@ export class BpmnWorkspaceComponent implements AfterViewInit, OnDestroy {
     this.subscription.add(
       this.workflowState.problems$.subscribe((problems) => {
         this.problems = problems;
+      })
+    );
+
+    this.subscription.add(
+      this.runtimeIntegration.getStatus().subscribe((status) => {
+        this.runtimeStatus = status;
       })
     );
 
@@ -311,6 +322,10 @@ export class BpmnWorkspaceComponent implements AfterViewInit, OnDestroy {
 
   setAutoCompleteUserTasks(enabled: boolean): void {
     this.setTaskHandlingMode(enabled ? 'auto-complete-user-tasks' : 'manual');
+  }
+
+  isCanvasBlocked(): boolean {
+    return this.activeMode === 'play' && this.runtimeStatus.state === 'deploying';
   }
 
   toggleTokenSimulation(): void {
