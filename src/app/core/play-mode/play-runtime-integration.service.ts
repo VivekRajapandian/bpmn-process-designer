@@ -34,6 +34,8 @@ export class PlayRuntimeIntegrationService {
 
   private deploymentTriggered = false;
   private instanceStarted = false;
+  private playModeActive = false;
+  private tokenSimulationActive = false;
   private deploymentPromise?: Promise<void>;
   private deployedProcessDefinition?: DeployedProcessDefinition;
 
@@ -55,13 +57,20 @@ export class PlayRuntimeIntegrationService {
       // Listen for simulation play event to start a process instance
       eventBus.on('tokenSimulation.playSimulation', () => {
         console.log('🎯 [PlayRuntime] Event received: tokenSimulation.playSimulation');
+        if (!this.playModeActive) {
+          console.log('ℹ️ [PlayRuntime] Ignoring simulation play because Play mode is not active');
+          return;
+        }
+
         this.handleSimulationPlay();
       });
 
       // Reset the deployment flag when simulation is reset
       eventBus.on('tokenSimulation.resetSimulation', () => {
         console.log('🔄 [PlayRuntime] Event received: tokenSimulation.resetSimulation - Resetting deployment flag');
-        this.resetRuntimeSession();
+        if (this.playModeActive) {
+          this.resetRuntimeSession();
+        }
       });
 
       // Reset when simulation is paused (allow re-triggering on next play)
@@ -73,6 +82,13 @@ export class PlayRuntimeIntegrationService {
       // Reset on toggle off
       eventBus.on('tokenSimulation.toggleMode', (event: any) => {
         console.log(`🔀 [PlayRuntime] Event received: tokenSimulation.toggleMode (active: ${event.active})`);
+        this.tokenSimulationActive = event.active;
+
+        if (!this.playModeActive) {
+          console.log('ℹ️ [PlayRuntime] Token simulation changed outside Play mode - no Camunda interaction');
+          return;
+        }
+
         if (event.active) {
           console.log('🟢 [PlayRuntime] Token simulation toggled ON - Deploying BPMN');
           this.handleSimulationModeStart();
@@ -103,6 +119,26 @@ export class PlayRuntimeIntegrationService {
    */
   getCurrentStatus(): RuntimeStatus {
     return this.status$.value;
+  }
+
+  setPlayModeActive(active: boolean): void {
+    if (active === this.playModeActive) {
+      return;
+    }
+
+    this.playModeActive = active;
+
+    if (!active) {
+      this.resetRuntimeSession();
+      this.updateStatus('idle', 'Play mode is off');
+      return;
+    }
+
+    this.updateStatus('waiting', 'Play mode is on - enable token simulation to deploy');
+
+    if (this.tokenSimulationActive) {
+      this.handleSimulationModeStart();
+    }
   }
 
   private resetRuntimeSession(): void {

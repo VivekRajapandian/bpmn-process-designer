@@ -26,6 +26,7 @@ import { RuntimeStatusComponent } from '../core/play-mode/runtime-status.compone
 import { PlayRuntimeIntegrationService } from '../core/play-mode/play-runtime-integration.service';
 
 type RightPanel = 'properties' | 'xml';
+type WorkspaceMode = 'design' | 'play';
 interface WorkflowDetails {
   name: string;
   engineType: EngineType;
@@ -58,6 +59,8 @@ export class BpmnWorkspaceComponent implements AfterViewInit, OnDestroy {
   workflow!: Workflow;
   problems: WorkflowProblem[] = [];
   activePanel: RightPanel = 'properties';
+  activeMode: WorkspaceMode = 'design';
+  tokenSimulationActive = false;
   saveMessage = '';
   engineChoice?: {
     title: string;
@@ -100,6 +103,11 @@ export class BpmnWorkspaceComponent implements AfterViewInit, OnDestroy {
 
     // Initialize Camunda 8 runtime integration for token simulator
     this.runtimeIntegration.initialize();
+    this.runtimeIntegration.setPlayModeActive(false);
+
+    this.bpmnAdapter.getEventBus().on('tokenSimulation.toggleMode', (event: any) => {
+      this.tokenSimulationActive = Boolean(event.active);
+    });
 
     this.subscription.add(
       this.workflowState.workflow$.subscribe((workflow) => {
@@ -276,6 +284,17 @@ export class BpmnWorkspaceComponent implements AfterViewInit, OnDestroy {
 
   renameWorkflow(): void {
     void this.renameCurrentWorkflow();
+  }
+
+  setWorkspaceMode(mode: WorkspaceMode): void {
+    this.activeMode = mode;
+    this.runtimeIntegration.setPlayModeActive(mode === 'play');
+  }
+
+  toggleTokenSimulation(): void {
+    const nextActive = !this.tokenSimulationActive;
+    this.bpmnAdapter.setTokenSimulationActive(nextActive);
+    this.tokenSimulationActive = nextActive;
   }
 
   resolveEngineChoice(): void {

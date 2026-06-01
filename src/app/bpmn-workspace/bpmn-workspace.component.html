@@ -21,7 +21,7 @@
       (workflowDeleted)="deleteWorkflow($event)"
     />
 
-    <section class="modeler">
+    <section class="modeler" [class.play-mode-active]="activeMode === 'play'">
       <div class="canvas-header">
         <div>
           <div class="title-row">
@@ -39,13 +39,39 @@
         </div>
       </div>
 
-      <div class="play-mode-panel">
-        <strong>Play Mode: Token simulation</strong>
-        <span>Powered by bpmn-js-token-simulation.</span>
-        <span>Camunda 8 deploys when token simulation mode starts; the instance starts when play is clicked.</span>
+      <div class="mode-bar">
+        <nav class="mode-tabs" aria-label="Modeler mode">
+          <button
+            type="button"
+            [class.active]="activeMode === 'design'"
+            (click)="setWorkspaceMode('design')"
+          >
+            Design
+          </button>
+          <button
+            type="button"
+            [class.active]="activeMode === 'play'"
+            (click)="setWorkspaceMode('play')"
+          >
+            Play mode
+          </button>
+        </nav>
+
+        <button
+          type="button"
+          class="token-toggle"
+          [class.active]="tokenSimulationActive"
+          [attr.aria-pressed]="tokenSimulationActive"
+          (click)="toggleTokenSimulation()"
+        >
+          <span class="toggle-track">
+            <span class="toggle-thumb"></span>
+          </span>
+          Token simulation
+        </button>
       </div>
 
-      <app-runtime-status />
+      <app-runtime-status *ngIf="activeMode === 'play'" />
 
       <app-bpmn-canvas />
 

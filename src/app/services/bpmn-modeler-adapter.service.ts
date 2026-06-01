@@ -188,6 +188,16 @@ export class BpmnModelerAdapterService {
     return this.modeler.get('eventBus');
   }
 
+  isTokenSimulationActive(): boolean {
+    this.ensureModeler();
+    return Boolean(this.modeler.get('toggleMode')?._active);
+  }
+
+  setTokenSimulationActive(active: boolean): void {
+    this.ensureModeler();
+    this.modeler.get('toggleMode').toggleMode(active);
+  }
+
   /**
    * Extract the executable process ID from the current modeler.
    * Returns the first executable process id, or undefined if not found.
