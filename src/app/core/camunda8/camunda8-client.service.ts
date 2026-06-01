@@ -29,6 +29,22 @@ export interface ProcessInstanceResponse {
   creationTimestamp: number;
 }
 
+export interface UserTask {
+  userTaskKey?: string;
+  key?: string;
+  id?: string;
+  name?: string;
+  state?: string;
+  processInstanceKey?: string;
+}
+
+interface SearchResponse<T> {
+  items: T[];
+  page?: {
+    totalItems?: number;
+  };
+}
+
 export interface Camunda8DeploymentError {
   type: string;
   title: string;
@@ -66,6 +82,7 @@ export class Camunda8ClientService {
 
       const url = `${this.restAddress}/v2/deployments`;
       const headers = await this.getAuthHeaders();
+      console.log(`[Camunda8] POST ${url} multipart field=resources fileName=${fileName}`);
       const response = await firstValueFrom(
         this.http.post<DeploymentResponse>(url, formData, { headers })
       );
@@ -101,7 +118,7 @@ export class Camunda8ClientService {
         "variables": variables || {}
       };
 
-      console.log('[Camunda8] Start instance body:', body);
+      console.log(`[Camunda8] POST ${url} start instance body:`, body);
 
       const response = await firstValueFrom(
         this.http.post<ProcessInstanceResponse>(url, body, {
@@ -151,6 +168,8 @@ export class Camunda8ClientService {
     processDefinitionId: string
   ): DeployedProcessDefinition {
     const processDefinitions = this.getDeployedProcessDefinitions(deployment);
+    console.log('[Camunda8] Normalized deployed process definitions:', processDefinitions);
+
     const processDefinition = processDefinitions.find(
       (deployed) => deployed.processDefinitionId === processDefinitionId
     );
@@ -162,6 +181,55 @@ export class Camunda8ClientService {
     }
 
     return processDefinition;
+  }
+
+  async searchUserTasks(processInstanceKey: string): Promise<UserTask[]> {
+    try {
+      const url = `${this.restAddress}/v2/user-tasks/search`;
+      const body = {
+        filter: {
+          processInstanceKey
+        },
+        page: {
+          limit: 50
+        }
+      };
+
+      console.log(`[Camunda8] POST ${url} search user tasks body:`, body);
+
+      const response = await firstValueFrom(
+        this.http.post<SearchResponse<UserTask>>(url, body, {
+          headers: await this.getAuthHeaders()
+        })
+      );
+
+      console.log('[Camunda8] User task search response:', response);
+
+      return response.items || [];
+    } catch (error) {
+      throw this.handleError(error, 'Failed to search user tasks');
+    }
+  }
+
+  async completeUserTask(userTaskKey: string, variables?: Record<string, any>): Promise<void> {
+    try {
+      const url = `${this.restAddress}/v2/user-tasks/${encodeURIComponent(userTaskKey)}/completion`;
+      const body = {
+        variables: variables || {}
+      };
+
+      console.log(`[Camunda8] POST ${url} complete user task body:`, body);
+
+      await firstValueFrom(
+        this.http.post<void>(url, body, {
+          headers: await this.getAuthHeaders()
+        })
+      );
+
+      console.log(`✅ [Camunda8] User task completed - Key: ${userTaskKey}`);
+    } catch (error) {
+      throw this.handleError(error, `Failed to complete user task ${userTaskKey}`);
+    }
   }
 
   getDeployedProcessDefinitions(deployment: DeploymentResponse): DeployedProcessDefinition[] {
@@ -213,6 +281,7 @@ export class Camunda8ClientService {
     }
 
     if (!this.tokenRequest) {
+      console.log('[Camunda8] Access token missing or expiring soon - requesting a new token');
       this.tokenRequest = this.requestAccessToken().finally(() => {
         this.tokenRequest = undefined;
       });
@@ -233,6 +302,12 @@ export class Camunda8ClientService {
       audience: this.authConfig.audience
     });
 
+    console.log(`[Camunda8] POST ${this.authConfig.tokenUrl} token request`, {
+      client_id: this.authConfig.clientId,
+      grant_type: 'client_credentials',
+      audience: this.authConfig.audience
+    });
+
     const response = await firstValueFrom(
       this.http.post<TokenResponse>(this.authConfig.tokenUrl, body.toString(), {
         headers: new HttpHeaders({
@@ -247,6 +322,7 @@ export class Camunda8ClientService {
 
     this.accessToken = response.access_token;
     this.accessTokenExpiresAt = Date.now() + (response.expires_in || 300) * 1000;
+    console.log(`[Camunda8] Access token received (expires_in=${response.expires_in || 300}s)`);
 
     return response.access_token;
   }

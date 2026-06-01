@@ -71,6 +71,17 @@
         </button>
       </div>
 
+      <div class="play-options" *ngIf="activeMode === 'play'">
+        <label class="auto-complete-option">
+          <input
+            type="checkbox"
+            [checked]="taskHandlingMode === 'auto-complete-user-tasks'"
+            (change)="setAutoCompleteUserTasks($any($event.target).checked)"
+          />
+          Auto-complete user tasks
+        </label>
+      </div>
+
       <app-runtime-status *ngIf="activeMode === 'play'" />
 
       <app-bpmn-canvas />

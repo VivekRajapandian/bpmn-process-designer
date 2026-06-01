@@ -23,7 +23,10 @@ import { ToolbarComponent } from '../toolbar/toolbar.component';
 import { WorkflowExplorerComponent } from '../workflow-explorer/workflow-explorer.component';
 import { XmlViewerComponent } from '../xml-viewer/xml-viewer.component';
 import { RuntimeStatusComponent } from '../core/play-mode/runtime-status.component';
-import { PlayRuntimeIntegrationService } from '../core/play-mode/play-runtime-integration.service';
+import {
+  PlayRuntimeIntegrationService,
+  TaskHandlingMode
+} from '../core/play-mode/play-runtime-integration.service';
 
 type RightPanel = 'properties' | 'xml';
 type WorkspaceMode = 'design' | 'play';
@@ -61,6 +64,7 @@ export class BpmnWorkspaceComponent implements AfterViewInit, OnDestroy {
   activePanel: RightPanel = 'properties';
   activeMode: WorkspaceMode = 'design';
   tokenSimulationActive = false;
+  taskHandlingMode: TaskHandlingMode = 'manual';
   saveMessage = '';
   engineChoice?: {
     title: string;
@@ -106,6 +110,10 @@ export class BpmnWorkspaceComponent implements AfterViewInit, OnDestroy {
     this.runtimeIntegration.setPlayModeActive(false);
 
     this.bpmnAdapter.getEventBus().on('tokenSimulation.toggleMode', (event: any) => {
+      console.log(
+        `[Workspace] tokenSimulation.toggleMode observed: active=${Boolean(event.active)} ` +
+        `(activeMode=${this.activeMode})`
+      );
       this.tokenSimulationActive = Boolean(event.active);
     });
 
@@ -287,12 +295,30 @@ export class BpmnWorkspaceComponent implements AfterViewInit, OnDestroy {
   }
 
   setWorkspaceMode(mode: WorkspaceMode): void {
+    console.log(
+      `[Workspace] Mode changed: ${this.activeMode} -> ${mode} ` +
+      `(tokenSimulationActive=${this.tokenSimulationActive})`
+    );
     this.activeMode = mode;
     this.runtimeIntegration.setPlayModeActive(mode === 'play');
   }
 
+  setTaskHandlingMode(mode: TaskHandlingMode): void {
+    console.log(`[Workspace] Play task handling changed: ${this.taskHandlingMode} -> ${mode}`);
+    this.taskHandlingMode = mode;
+    this.runtimeIntegration.setTaskHandlingMode(mode);
+  }
+
+  setAutoCompleteUserTasks(enabled: boolean): void {
+    this.setTaskHandlingMode(enabled ? 'auto-complete-user-tasks' : 'manual');
+  }
+
   toggleTokenSimulation(): void {
     const nextActive = !this.tokenSimulationActive;
+    console.log(
+      `[Workspace] Token simulation toggle clicked: ${this.tokenSimulationActive} -> ${nextActive} ` +
+      `(activeMode=${this.activeMode})`
+    );
     this.bpmnAdapter.setTokenSimulationActive(nextActive);
     this.tokenSimulationActive = nextActive;
   }
