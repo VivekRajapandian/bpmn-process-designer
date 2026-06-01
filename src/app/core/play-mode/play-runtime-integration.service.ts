@@ -40,6 +40,8 @@ export class PlayRuntimeIntegrationService {
   private taskHandlingMode: TaskHandlingMode = 'manual';
   private deploymentPromise?: Promise<void>;
   private deployedProcessDefinition?: DeployedProcessDefinition;
+  private currentProcessInstanceKey?: string;
+  private readonly completingUserTaskElementIds = new Set<string>();
 
   constructor(
     private readonly modelerAdapter: BpmnModelerAdapterService,
@@ -68,6 +70,41 @@ export class PlayRuntimeIntegrationService {
         }
 
         void this.startProcessInstance();
+      });
+
+      eventBus.on('tokenSimulation.simulator.createScope', (event: any) => {
+        console.log(
+          `[PlayRuntime] tokenSimulation.simulator.createScope received ` +
+          `(scopeElement=${event?.scope?.element?.id || '(unknown)'}, ` +
+          `playModeActive=${this.playModeActive}, tokenSimulationActive=${this.tokenSimulationActive}, ` +
+          `deploymentTriggered=${this.deploymentTriggered}, instanceStarted=${this.instanceStarted})`
+        );
+
+        if (!this.playModeActive || !this.tokenSimulationActive) {
+          return;
+        }
+
+        void this.startProcessInstance();
+      });
+
+      eventBus.on('tokenSimulation.simulator.trace', (event: any) => {
+        const element = event?.element;
+        console.log(
+          `[PlayRuntime] tokenSimulation.simulator.trace received ` +
+          `(action=${event?.action}, element=${element?.id || '(none)'}, type=${element?.type || '(none)'}, ` +
+          `playModeActive=${this.playModeActive}, tokenSimulationActive=${this.tokenSimulationActive}, ` +
+          `processInstanceKey=${this.currentProcessInstanceKey || '(none)'})`
+        );
+
+        if (
+          event?.action === 'signal' &&
+          element?.type === 'bpmn:UserTask' &&
+          this.playModeActive &&
+          this.tokenSimulationActive &&
+          this.taskHandlingMode === 'manual'
+        ) {
+          void this.completeUserTaskAfterTokenResume(element.id);
+        }
       });
 
       // Reset the deployment flag when simulation is reset
@@ -106,9 +143,11 @@ export class PlayRuntimeIntegrationService {
 
         if (event.active) {
           console.log('🟢 [PlayRuntime] Token simulation toggled ON in Play mode - Deploying BPMN');
+          this.modelerAdapter.setUserTaskPausePoints(true);
           this.ensureDeployment();
         } else {
           console.log('🔴 [PlayRuntime] Token simulation toggled OFF in Play mode - Resetting runtime session');
+          this.modelerAdapter.setUserTaskPausePoints(false);
           this.resetRuntimeSession();
         }
       });
@@ -158,6 +197,7 @@ export class PlayRuntimeIntegrationService {
     this.updateStatus('waiting', 'Play mode is on - enable token simulation to deploy');
 
     if (this.tokenSimulationActive) {
+      this.modelerAdapter.setUserTaskPausePoints(true);
       this.ensureDeployment();
     }
   }
@@ -181,10 +221,13 @@ export class PlayRuntimeIntegrationService {
       `[PlayRuntime] Runtime session reset ` +
       `(was deploymentTriggered=${this.deploymentTriggered}, instanceStarted=${this.instanceStarted})`
     );
+    this.modelerAdapter.setUserTaskPausePoints(false);
     this.deploymentTriggered = false;
     this.instanceStarted = false;
     this.deploymentPromise = undefined;
     this.deployedProcessDefinition = undefined;
+    this.currentProcessInstanceKey = undefined;
+    this.completingUserTaskElementIds.clear();
     this.updateStatus('waiting', 'Play mode is on - enable token simulation to deploy');
   }
 
@@ -234,6 +277,7 @@ export class PlayRuntimeIntegrationService {
         this.deployedProcessDefinition.processDefinitionVersion
       );
       const processInstanceKey = instance.processInstanceKey;
+      this.currentProcessInstanceKey = processInstanceKey;
 
       console.log(`✅ [PlayRuntime] Process Instance START SUCCESS - Instance Key: "${processInstanceKey}"`);
 
@@ -384,6 +428,7 @@ export class PlayRuntimeIntegrationService {
 
         await this.camunda8Client.completeUserTask(userTaskKey);
         completedCount += 1;
+        this.continueUserTaskToken(task);
       }
 
       await this.delay(pollDelayMs);
@@ -402,6 +447,115 @@ export class PlayRuntimeIntegrationService {
 
   private getUserTaskKey(task: UserTask): string | undefined {
     return task.userTaskKey || task.key || task.id;
+  }
+
+  private async completeUserTaskAfterTokenResume(elementId: string): Promise<void> {
+    if (!this.currentProcessInstanceKey) {
+      console.warn(`[PlayRuntime] Cannot complete user task for "${elementId}" because no process instance key is known`);
+      return;
+    }
+
+    if (this.completingUserTaskElementIds.has(elementId)) {
+      console.log(`[PlayRuntime] User task completion already in progress for "${elementId}"`);
+      return;
+    }
+
+    this.completingUserTaskElementIds.add(elementId);
+
+    try {
+      const task = await this.findOpenUserTaskForElement(
+        this.currentProcessInstanceKey,
+        elementId
+      );
+
+      if (!task) {
+        console.warn(
+          `[PlayRuntime] No open Camunda user task found for resumed token at "${elementId}"`
+        );
+        return;
+      }
+
+      const userTaskKey = this.getUserTaskKey(task);
+
+      if (!userTaskKey) {
+        console.warn('[PlayRuntime] Cannot complete Camunda user task without key:', task);
+        return;
+      }
+
+      this.updateStatus(
+        'starting',
+        `Completing Camunda user task ${task.name || userTaskKey}...`,
+        this.currentProcessInstanceKey
+      );
+
+      await this.camunda8Client.completeUserTask(userTaskKey);
+
+      this.updateStatus(
+        'success',
+        `Completed Camunda user task ${task.name || userTaskKey}.`,
+        this.currentProcessInstanceKey
+      );
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error occurred';
+
+      console.error(`[PlayRuntime] Failed to complete user task after token resume: ${errorMessage}`, error);
+      this.updateStatus('error', errorMessage, this.currentProcessInstanceKey);
+    } finally {
+      this.completingUserTaskElementIds.delete(elementId);
+    }
+  }
+
+  private async findOpenUserTaskForElement(
+    processInstanceKey: string,
+    elementId: string
+  ): Promise<UserTask | undefined> {
+    const maxAttempts = 10;
+    const pollDelayMs = 500;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      const tasks = await this.camunda8Client.searchUserTasks(processInstanceKey);
+      const openTasks = tasks.filter((task) => this.isOpenUserTask(task));
+      const matchingTask = openTasks.find(
+        (task) => this.getUserTaskElementId(task) === elementId
+      );
+
+      console.log(
+        `[PlayRuntime] Manual user task lookup ${attempt}/${maxAttempts} for "${elementId}":`,
+        { openTasks, matchingTask }
+      );
+
+      if (matchingTask) {
+        return matchingTask;
+      }
+
+      if (openTasks.length === 1) {
+        console.warn(
+          `[PlayRuntime] Falling back to the only open Camunda user task for resumed BPMN element "${elementId}"`
+        );
+        return openTasks[0];
+      }
+
+      await this.delay(pollDelayMs);
+    }
+
+    return undefined;
+  }
+
+  private getUserTaskElementId(task: UserTask): string | undefined {
+    return task.elementId || task.flowNodeId || task.taskDefinitionId || task.bpmnElementId;
+  }
+
+  private continueUserTaskToken(task: UserTask): void {
+    const elementId = this.getUserTaskElementId(task);
+
+    if (this.modelerAdapter.continueUserTaskToken(elementId)) {
+      return;
+    }
+
+    if (elementId) {
+      this.modelerAdapter.continueUserTaskToken();
+    }
   }
 
   private delay(milliseconds: number): Promise<void> {

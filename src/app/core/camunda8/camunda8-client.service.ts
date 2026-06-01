@@ -33,6 +33,10 @@ export interface UserTask {
   userTaskKey?: string;
   key?: string;
   id?: string;
+  elementId?: string;
+  flowNodeId?: string;
+  taskDefinitionId?: string;
+  bpmnElementId?: string;
   name?: string;
   state?: string;
   processInstanceKey?: string;

@@ -21,6 +21,7 @@ export class BpmnModelerAdapterService {
   private propertiesPanel?: HTMLElement;
   private engineType?: EngineType;
   private zoomLevel = 1;
+  private readonly autoPausePointPreviousState = new Map<string, boolean>();
 
   readonly changed$ = new Subject<void>();
 
@@ -168,6 +169,7 @@ export class BpmnModelerAdapterService {
     if (this.modeler) {
       this.modeler.destroy();
       this.modeler = undefined;
+      this.autoPausePointPreviousState.clear();
     }
   }
 
@@ -196,6 +198,75 @@ export class BpmnModelerAdapterService {
   setTokenSimulationActive(active: boolean): void {
     this.ensureModeler();
     this.modeler.get('toggleMode').toggleMode(active);
+  }
+
+  setUserTaskPausePoints(active: boolean): void {
+    this.ensureModeler();
+
+    const simulator = this.modeler.get('simulator');
+    const userTasks = this.getUserTaskElements();
+
+    if (active) {
+      userTasks.forEach((element: any) => {
+        if (!this.autoPausePointPreviousState.has(element.id)) {
+          this.autoPausePointPreviousState.set(
+            element.id,
+            Boolean(simulator.getConfig(element).wait)
+          );
+        }
+
+        simulator.waitAtElement(element, true);
+      });
+
+      console.log(`[BpmnAdapter] Added Play mode pause points to ${userTasks.length} user task(s)`);
+      return;
+    }
+
+    this.autoPausePointPreviousState.forEach((wasPaused, elementId) => {
+      const element = this.modeler.get('elementRegistry').get(elementId);
+
+      if (element) {
+        simulator.waitAtElement(element, wasPaused);
+      }
+    });
+
+    console.log(
+      `[BpmnAdapter] Restored ${this.autoPausePointPreviousState.size} Play mode pause point(s)`
+    );
+    this.autoPausePointPreviousState.clear();
+  }
+
+  continueUserTaskToken(elementId?: string): boolean {
+    this.ensureModeler();
+
+    const simulator = this.modeler.get('simulator');
+    const elementRegistry = this.modeler.get('elementRegistry');
+    const candidateElements = elementId
+      ? [elementRegistry.get(elementId)].filter(Boolean)
+      : this.getUserTaskElements();
+
+    for (const element of candidateElements) {
+      const subscriptions = simulator
+        .findSubscriptions({ element })
+        .filter((subscription: any) => subscription.event?.type === 'continue');
+
+      if (subscriptions.length === 0) {
+        continue;
+      }
+
+      simulator.trigger({
+        event: subscriptions[0].event,
+        scope: subscriptions[0].scope
+      });
+
+      console.log(`[BpmnAdapter] Continued paused token at user task "${element.id}"`);
+      return true;
+    }
+
+    console.log(
+      `[BpmnAdapter] No paused user task token found${elementId ? ` for "${elementId}"` : ''}`
+    );
+    return false;
   }
 
   /**
@@ -232,6 +303,19 @@ export class BpmnModelerAdapterService {
       console.error('Failed to extract process ID from modeler:', error);
       return undefined;
     }
+  }
+
+  private getUserTaskElements(): any[] {
+    this.ensureModeler();
+
+    const userTasks: any[] = [];
+    this.modeler.get('elementRegistry').forEach((element: any) => {
+      if (element.type === 'bpmn:UserTask') {
+        userTasks.push(element);
+      }
+    });
+
+    return userTasks;
   }
 
   private setZoom(level: number): void {
