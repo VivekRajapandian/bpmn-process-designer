@@ -310,8 +310,20 @@ export class BpmnWorkspaceComponent implements AfterViewInit, OnDestroy {
       `[Workspace] Mode changed: ${this.activeMode} -> ${mode} ` +
       `(tokenSimulationActive=${this.tokenSimulationActive})`
     );
+
     this.activeMode = mode;
     this.runtimeIntegration.setPlayModeActive(mode === 'play');
+
+    if (mode === 'design' && this.tokenSimulationActive) {
+      this.bpmnAdapter.setTokenSimulationActive(false);
+      this.tokenSimulationActive = false;
+      return;
+    }
+
+    if (mode === 'play' && !this.tokenSimulationActive) {
+      this.bpmnAdapter.setTokenSimulationActive(true);
+      this.tokenSimulationActive = true;
+    }
   }
 
   setTaskHandlingMode(mode: TaskHandlingMode): void {
