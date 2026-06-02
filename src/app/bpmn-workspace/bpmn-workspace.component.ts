@@ -332,12 +332,20 @@ export class BpmnWorkspaceComponent implements AfterViewInit, OnDestroy {
     this.runtimeIntegration.setTaskHandlingMode(mode);
   }
 
-  setAutoCompleteUserTasks(enabled: boolean): void {
-    this.setTaskHandlingMode(enabled ? 'auto-complete-user-tasks' : 'manual');
+  setAutoComplete(enabled: boolean): void {
+    this.setTaskHandlingMode(enabled ? 'auto-complete' : 'manual');
   }
 
   isCanvasBlocked(): boolean {
     return this.activeMode === 'play' && this.runtimeStatus.state === 'deploying';
+  }
+
+  getCanvasBlockMessage(): string {
+    if (this.activeMode === 'play' && this.runtimeStatus.state === 'deploying') {
+      return 'Deploying to Camunda...';
+    }
+
+    return '';
   }
 
   toggleTokenSimulation(): void {

@@ -12,7 +12,7 @@
     (zoomOut)="zoomOut()"
   />
 
-  <section class="body">
+  <section class="body" [class.properties-hidden]="tokenSimulationActive">
     <app-workflow-explorer
       [workflows]="samples"
       [activeWorkflowId]="workflow.id"
@@ -75,10 +75,10 @@
         <label class="auto-complete-option">
           <input
             type="checkbox"
-            [checked]="taskHandlingMode === 'auto-complete-user-tasks'"
-            (change)="setAutoCompleteUserTasks($any($event.target).checked)"
+            [checked]="taskHandlingMode === 'auto-complete'"
+            (change)="setAutoComplete($any($event.target).checked)"
           />
-          Auto-complete user tasks
+          Auto-complete
         </label>
       </div>
 
@@ -87,8 +87,12 @@
       <div class="canvas-shell" [class.canvas-blocked]="isCanvasBlocked()">
         <app-bpmn-canvas />
         <div class="canvas-blocker" *ngIf="isCanvasBlocked()" aria-live="polite">
-          <span class="canvas-blocker-spinner" aria-hidden="true"></span>
-          Deploying to Camunda...
+          <span
+            class="canvas-blocker-spinner"
+            *ngIf="activeMode === 'play' && runtimeStatus.state === 'deploying'"
+            aria-hidden="true"
+          ></span>
+          {{ getCanvasBlockMessage() }}
         </div>
       </div>
 
@@ -98,7 +102,7 @@
       />
     </section>
 
-    <aside class="right-panel">
+    <aside class="right-panel" [class.hidden-by-simulation]="tokenSimulationActive">
       <div class="tabs" role="tablist" aria-label="Inspector panels">
         <button
           type="button"

@@ -2,12 +2,13 @@ import { Injectable } from '@angular/core';
 import { BehaviorSubject, Observable } from 'rxjs';
 import { BpmnModelerAdapterService } from '../../services/bpmn-modeler-adapter.service';
 import {
+  ActivatedJob,
   Camunda8ClientService,
   DeployedProcessDefinition,
   UserTask
 } from '../camunda8/camunda8-client.service';
 
-export type TaskHandlingMode = 'manual' | 'auto-complete-user-tasks';
+export type TaskHandlingMode = 'manual' | 'auto-complete';
 
 export interface RuntimeStatus {
   state:
@@ -35,6 +36,7 @@ export class PlayRuntimeIntegrationService {
 
   private deploymentTriggered = false;
   private instanceStarted = false;
+  private instanceStartInProgress = false;
   private playModeActive = false;
   private tokenSimulationActive = false;
   private taskHandlingMode: TaskHandlingMode = 'manual';
@@ -42,6 +44,9 @@ export class PlayRuntimeIntegrationService {
   private deployedProcessDefinition?: DeployedProcessDefinition;
   private currentProcessInstanceKey?: string;
   private readonly completingUserTaskElementIds = new Set<string>();
+  private readonly completingServiceTaskElementIds = new Set<string>();
+  private readonly correlatedMessageEventElementIds = new Set<string>();
+  private readonly hardcodedMessageCorrelationKey = '123';
 
   constructor(
     private readonly modelerAdapter: BpmnModelerAdapterService,
@@ -80,7 +85,11 @@ export class PlayRuntimeIntegrationService {
           `deploymentTriggered=${this.deploymentTriggered}, instanceStarted=${this.instanceStarted})`
         );
 
-        if (!this.playModeActive || !this.tokenSimulationActive) {
+        if (
+          !this.playModeActive ||
+          !this.tokenSimulationActive ||
+          event?.scope?.parent
+        ) {
           return;
         }
 
@@ -96,6 +105,12 @@ export class PlayRuntimeIntegrationService {
           `processInstanceKey=${this.currentProcessInstanceKey || '(none)'})`
         );
 
+        if (this.isMessageEventElement(element)) {
+          this.logMessageEventTrace(event, element);
+        }
+
+        this.logAttachedMessageEventTraces(event, element);
+
         if (
           event?.action === 'signal' &&
           element?.type === 'bpmn:UserTask' &&
@@ -104,6 +119,36 @@ export class PlayRuntimeIntegrationService {
           this.taskHandlingMode === 'manual'
         ) {
           void this.completeUserTaskAfterTokenResume(element.id);
+        }
+
+        if (
+          event?.action === 'signal' &&
+          element?.type === 'bpmn:ServiceTask' &&
+          this.playModeActive &&
+          this.tokenSimulationActive &&
+          this.taskHandlingMode === 'manual'
+        ) {
+          void this.completeServiceTaskJobAtElement(element, false);
+        }
+
+        if (
+          event?.action === 'enter' &&
+          element?.type === 'bpmn:UserTask' &&
+          this.playModeActive &&
+          this.tokenSimulationActive &&
+          this.taskHandlingMode === 'auto-complete'
+        ) {
+          void this.autoCompleteUserTaskAtElement(element.id);
+        }
+
+        if (
+          event?.action === 'enter' &&
+          element?.type === 'bpmn:ServiceTask' &&
+          this.playModeActive &&
+          this.tokenSimulationActive &&
+          this.taskHandlingMode === 'auto-complete'
+        ) {
+          void this.completeServiceTaskJobAtElement(element, true);
         }
       });
 
@@ -143,11 +188,11 @@ export class PlayRuntimeIntegrationService {
 
         if (event.active) {
           console.log('🟢 [PlayRuntime] Token simulation toggled ON in Play mode - Deploying BPMN');
-          this.modelerAdapter.setUserTaskPausePoints(true);
+          this.modelerAdapter.setTaskPausePoints(true);
           this.ensureDeployment();
         } else {
           console.log('🔴 [PlayRuntime] Token simulation toggled OFF in Play mode - Resetting runtime session');
-          this.modelerAdapter.setUserTaskPausePoints(false);
+          this.modelerAdapter.setTaskPausePoints(false);
           this.resetRuntimeSession();
         }
       });
@@ -197,7 +242,7 @@ export class PlayRuntimeIntegrationService {
     this.updateStatus('waiting', 'Play mode is on - enable token simulation to deploy');
 
     if (this.tokenSimulationActive) {
-      this.modelerAdapter.setUserTaskPausePoints(true);
+      this.modelerAdapter.setTaskPausePoints(true);
       this.ensureDeployment();
     }
   }
@@ -208,9 +253,9 @@ export class PlayRuntimeIntegrationService {
 
     if (this.playModeActive) {
       const message =
-        mode === 'auto-complete-user-tasks'
-          ? 'Play mode is on - user tasks will auto-complete'
-          : 'Play mode is on - user tasks wait in Camunda';
+        mode === 'auto-complete'
+          ? 'Play mode is on - tasks will auto-complete'
+          : 'Play mode is on - user and service tasks wait in Camunda';
 
       this.updateStatus('waiting', message);
     }
@@ -221,13 +266,16 @@ export class PlayRuntimeIntegrationService {
       `[PlayRuntime] Runtime session reset ` +
       `(was deploymentTriggered=${this.deploymentTriggered}, instanceStarted=${this.instanceStarted})`
     );
-    this.modelerAdapter.setUserTaskPausePoints(false);
+    this.modelerAdapter.setTaskPausePoints(false);
     this.deploymentTriggered = false;
     this.instanceStarted = false;
+    this.instanceStartInProgress = false;
     this.deploymentPromise = undefined;
     this.deployedProcessDefinition = undefined;
     this.currentProcessInstanceKey = undefined;
     this.completingUserTaskElementIds.clear();
+    this.completingServiceTaskElementIds.clear();
+    this.correlatedMessageEventElementIds.clear();
     this.updateStatus('waiting', 'Play mode is on - enable token simulation to deploy');
   }
 
@@ -251,11 +299,12 @@ export class PlayRuntimeIntegrationService {
       return;
     }
 
-    if (this.instanceStarted) {
+    if (this.instanceStartInProgress || this.instanceStarted) {
       console.warn('[PlayRuntime] Start blocked: instance already started for this simulation session');
       return;
     }
 
+    this.instanceStartInProgress = true;
     this.instanceStarted = true;
 
     try {
@@ -278,15 +327,22 @@ export class PlayRuntimeIntegrationService {
       );
       const processInstanceKey = instance.processInstanceKey;
       this.currentProcessInstanceKey = processInstanceKey;
+      this.completingUserTaskElementIds.clear();
+      this.correlatedMessageEventElementIds.clear();
 
       console.log(`✅ [PlayRuntime] Process Instance START SUCCESS - Instance Key: "${processInstanceKey}"`);
 
-      if (this.taskHandlingMode === 'auto-complete-user-tasks') {
-        await this.autoCompleteUserTasks(processInstanceKey);
+      if (this.taskHandlingMode === 'auto-complete') {
+        this.updateStatus(
+          'success',
+          `Process instance started: ${processInstanceKey}. Waiting to auto-complete tasks as tokens arrive.`,
+          processInstanceKey
+        );
+        this.instanceStarted = false;
       } else {
         this.updateStatus(
           'success',
-          `Process instance started: ${processInstanceKey}. User tasks wait in Camunda.`,
+          `Process instance started: ${processInstanceKey}. User and service tasks wait in Camunda.`,
           processInstanceKey
         );
       }
@@ -298,6 +354,8 @@ export class PlayRuntimeIntegrationService {
 
       this.updateStatus('error', errorMessage);
       this.instanceStarted = false;
+    } finally {
+      this.instanceStartInProgress = false;
     }
   }
 
@@ -359,7 +417,7 @@ export class PlayRuntimeIntegrationService {
       );
 
       this.deployedProcessDefinition = processDefinition;
-      this.updateStatus('success', `BPMN deployed: ${deploymentKey}`);
+      this.updateStatus('waiting', `BPMN deployed: ${deploymentKey}. Waiting for token simulation play...`);
 
       console.log('🎉 [PlayRuntime] Camunda 8 deployment complete; waiting for play to start instance');
     } catch (error) {
@@ -376,69 +434,6 @@ export class PlayRuntimeIntegrationService {
 
       throw error;
     }
-  }
-
-  private async autoCompleteUserTasks(processInstanceKey: string): Promise<void> {
-    console.log(
-      `[PlayRuntime] Auto-complete user tasks started ` +
-      `(processInstanceKey=${processInstanceKey})`
-    );
-    const maxAttempts = 30;
-    const pollDelayMs = 1000;
-    let completedCount = 0;
-    let idleChecks = 0;
-
-    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-      this.updateStatus(
-        'starting',
-        `Watching user tasks for auto-complete (${attempt}/${maxAttempts})...`,
-        processInstanceKey
-      );
-
-      const tasks = await this.camunda8Client.searchUserTasks(processInstanceKey);
-      console.log(`[PlayRuntime] User task poll ${attempt}/${maxAttempts}:`, tasks);
-      const openTasks = tasks.filter((task) => this.isOpenUserTask(task));
-
-      if (openTasks.length === 0) {
-        idleChecks += 1;
-
-        if (idleChecks >= 3) {
-          break;
-        }
-
-        await this.delay(pollDelayMs);
-        continue;
-      }
-
-      idleChecks = 0;
-
-      for (const task of openTasks) {
-        const userTaskKey = this.getUserTaskKey(task);
-
-        if (!userTaskKey) {
-          console.warn('[PlayRuntime] Skipping user task without key:', task);
-          continue;
-        }
-
-        this.updateStatus(
-          'starting',
-          `Auto-completing user task ${task.name || userTaskKey}...`,
-          processInstanceKey
-        );
-
-        await this.camunda8Client.completeUserTask(userTaskKey);
-        completedCount += 1;
-        this.continueUserTaskToken(task);
-      }
-
-      await this.delay(pollDelayMs);
-    }
-
-    this.updateStatus(
-      'success',
-      `Process instance started: ${processInstanceKey}. Auto-completed ${completedCount} user task${completedCount === 1 ? '' : 's'}.`,
-      processInstanceKey
-    );
   }
 
   private isOpenUserTask(task: UserTask): boolean {
@@ -506,6 +501,166 @@ export class PlayRuntimeIntegrationService {
     }
   }
 
+  private async autoCompleteUserTaskAtElement(elementId: string): Promise<void> {
+    if (!this.currentProcessInstanceKey) {
+      console.warn(`[PlayRuntime] Cannot auto-complete user task for "${elementId}" because no process instance key is known`);
+      return;
+    }
+
+    if (this.completingUserTaskElementIds.has(elementId)) {
+      console.log(`[PlayRuntime] Auto-complete already in progress for "${elementId}"`);
+      return;
+    }
+
+    this.completingUserTaskElementIds.add(elementId);
+
+    try {
+      this.updateStatus(
+        'starting',
+        `Waiting for Camunda user task at ${elementId}...`,
+        this.currentProcessInstanceKey
+      );
+
+      const task = await this.findOpenUserTaskForElement(
+        this.currentProcessInstanceKey,
+        elementId
+      );
+
+      if (!task) {
+        console.warn(`[PlayRuntime] No open Camunda user task found to auto-complete for "${elementId}"`);
+        this.updateStatus(
+          'success',
+          `No open Camunda user task found for ${elementId}.`,
+          this.currentProcessInstanceKey
+        );
+        return;
+      }
+
+      const userTaskKey = this.getUserTaskKey(task);
+
+      if (!userTaskKey) {
+        console.warn('[PlayRuntime] Cannot auto-complete Camunda user task without key:', task);
+        return;
+      }
+
+      this.updateStatus(
+        'starting',
+        `Auto-completing user task ${task.name || userTaskKey}...`,
+        this.currentProcessInstanceKey
+      );
+
+      await this.camunda8Client.completeUserTask(userTaskKey);
+      this.continueUserTaskToken(task);
+
+      this.updateStatus(
+        'success',
+        `Auto-completed user task ${task.name || userTaskKey}.`,
+        this.currentProcessInstanceKey
+      );
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error occurred';
+
+      console.error(`[PlayRuntime] Failed to auto-complete user task at "${elementId}": ${errorMessage}`, error);
+      this.updateStatus('error', errorMessage, this.currentProcessInstanceKey);
+    } finally {
+      this.completingUserTaskElementIds.delete(elementId);
+    }
+  }
+
+  private async completeServiceTaskJobAtElement(
+    element: any,
+    continueTokenAfterCompletion: boolean
+  ): Promise<void> {
+    const elementId = element?.id;
+
+    if (!this.currentProcessInstanceKey) {
+      console.warn(`[PlayRuntime] Cannot auto-complete service task "${elementId}" because no process instance key is known`);
+      return;
+    }
+
+    if (!elementId) {
+      console.warn('[PlayRuntime] Cannot auto-complete service task without an element id:', element);
+      return;
+    }
+
+    if (this.completingServiceTaskElementIds.has(elementId)) {
+      console.log(`[PlayRuntime] Service task auto-complete already in progress for "${elementId}"`);
+      return;
+    }
+
+    const jobType = this.getServiceTaskJobType(element);
+
+    if (!jobType) {
+      console.warn(`[PlayRuntime] Service task "${elementId}" has no Zeebe job type to activate`);
+      this.updateStatus(
+        'success',
+        `No job type found for service task ${elementId}.`,
+        this.currentProcessInstanceKey
+      );
+      return;
+    }
+
+    this.completingServiceTaskElementIds.add(elementId);
+
+    try {
+      this.updateStatus(
+        'starting',
+        `${continueTokenAfterCompletion ? 'Auto-completing' : 'Completing'} Camunda job for service task ${elementId} (${jobType})...`,
+        this.currentProcessInstanceKey
+      );
+
+      const job = await this.findActivatedJobForElement(
+        this.currentProcessInstanceKey,
+        elementId,
+        jobType
+      );
+
+      if (!job) {
+        console.warn(`[PlayRuntime] No Camunda job found to auto-complete for service task "${elementId}"`);
+        this.updateStatus(
+          'success',
+          `No Camunda job found for service task ${elementId}.`,
+          this.currentProcessInstanceKey
+        );
+        return;
+      }
+
+      const jobKey = this.getJobKey(job);
+
+      if (!jobKey) {
+        console.warn('[PlayRuntime] Cannot complete Camunda job without key:', job);
+        return;
+      }
+
+      this.updateStatus(
+        'starting',
+        `${continueTokenAfterCompletion ? 'Auto-completing' : 'Completing'} service task job ${jobKey}...`,
+        this.currentProcessInstanceKey
+      );
+
+      await this.camunda8Client.completeJob(jobKey);
+
+      if (continueTokenAfterCompletion) {
+        this.modelerAdapter.continueTaskToken(elementId);
+      }
+
+      this.updateStatus(
+        'success',
+        `${continueTokenAfterCompletion ? 'Auto-completed' : 'Completed'} service task job ${jobKey}.`,
+        this.currentProcessInstanceKey
+      );
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error occurred';
+
+      console.error(`[PlayRuntime] Failed to auto-complete service task "${elementId}": ${errorMessage}`, error);
+      this.updateStatus('error', errorMessage, this.currentProcessInstanceKey);
+    } finally {
+      this.completingServiceTaskElementIds.delete(elementId);
+    }
+  }
+
   private async findOpenUserTaskForElement(
     processInstanceKey: string,
     elementId: string
@@ -539,11 +694,243 @@ export class PlayRuntimeIntegrationService {
       await this.delay(pollDelayMs);
     }
 
+    console.warn(
+      `[PlayRuntime] Timed out waiting for open Camunda user task for BPMN element "${elementId}"`
+    );
+    this.updateStatus(
+      'success',
+      `No open Camunda user task found for ${elementId}. Token can continue.`,
+      processInstanceKey
+    );
+
     return undefined;
   }
 
   private getUserTaskElementId(task: UserTask): string | undefined {
     return task.elementId || task.flowNodeId || task.taskDefinitionId || task.bpmnElementId;
+  }
+
+  private async findActivatedJobForElement(
+    processInstanceKey: string,
+    elementId: string,
+    jobType: string
+  ): Promise<ActivatedJob | undefined> {
+    const maxAttempts = 10;
+    const pollDelayMs = 500;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      const jobs = await this.camunda8Client.activateJobs(jobType);
+      const matchingJob = jobs.find(
+        (job) =>
+          this.getJobProcessInstanceKey(job) === processInstanceKey &&
+          this.getJobElementId(job) === elementId
+      );
+      const processInstanceJob = jobs.find(
+        (job) => this.getJobProcessInstanceKey(job) === processInstanceKey
+      );
+
+      console.log(
+        `[PlayRuntime] Service task job activation ${attempt}/${maxAttempts} for "${elementId}" (${jobType}):`,
+        { jobs, matchingJob, processInstanceJob }
+      );
+
+      if (matchingJob) {
+        return matchingJob;
+      }
+
+      if (processInstanceJob) {
+        console.warn(
+          `[PlayRuntime] Falling back to activated Camunda job from the current process instance for service task "${elementId}"`
+        );
+        return processInstanceJob;
+      }
+
+      await this.delay(pollDelayMs);
+    }
+
+    console.warn(
+      `[PlayRuntime] Timed out waiting for Camunda job for service task "${elementId}" (${jobType})`
+    );
+
+    return undefined;
+  }
+
+  private getServiceTaskJobType(element: any): string | undefined {
+    const values = element?.businessObject?.extensionElements?.values || [];
+    const taskDefinition = values.find((value: any) => value.$type === 'zeebe:TaskDefinition');
+
+    return taskDefinition?.type;
+  }
+
+  private getJobKey(job: ActivatedJob): string | undefined {
+    const key = job.jobKey || job.key;
+    return key === undefined || key === null ? undefined : String(key);
+  }
+
+  private getJobElementId(job: ActivatedJob): string | undefined {
+    return job.elementId || job.flowNodeId || job.bpmnElementId;
+  }
+
+  private getJobProcessInstanceKey(job: ActivatedJob): string | undefined {
+    return job.processInstanceKey === undefined || job.processInstanceKey === null
+      ? undefined
+      : String(job.processInstanceKey);
+  }
+
+  private isMessageEventElement(element: any): boolean {
+    return this.getMessageEventDefinition(element) !== undefined;
+  }
+
+  private getMessageEventDefinition(element: any): any | undefined {
+    const eventDefinitions = element?.businessObject?.eventDefinitions || [];
+
+    return eventDefinitions.find(
+      (definition: any) => definition?.$type === 'bpmn:MessageEventDefinition'
+    );
+  }
+
+  private logMessageEventTrace(
+    event: any,
+    element: any,
+    allowCorrelation: boolean = true
+  ): void {
+    const messageDefinition = this.getMessageEventDefinition(element);
+    const messageRef = messageDefinition?.messageRef;
+    const attachedToRef = element?.businessObject?.attachedToRef;
+    const traceAction = event?.action;
+
+    console.log('[PlayRuntime] Message event trace detected:', {
+      action: traceAction,
+      elementId: element?.id,
+      elementType: element?.type,
+      messageEventDefinitionId: messageDefinition?.id,
+      messageId: messageRef?.id,
+      messageName: messageRef?.name,
+      attachedToId: attachedToRef?.id,
+      attachedToType: attachedToRef?.$type,
+      allowCorrelation
+    });
+
+    console.log(
+      `[PlayRuntime] Message correlation decision ` +
+      `(action=${traceAction || '(none)'}, element=${element?.id || '(none)'}, ` +
+      `messageName=${messageRef?.name || '(none)'}, playModeActive=${this.playModeActive}, ` +
+      `tokenSimulationActive=${this.tokenSimulationActive}, alreadyCorrelated=${this.correlatedMessageEventElementIds.has(element?.id)}, ` +
+      `allowCorrelation=${allowCorrelation})`
+    );
+
+    if (!allowCorrelation) {
+      console.log(
+        `[PlayRuntime] Message correlation skipped for "${element?.id || '(unknown)'}" ` +
+        'because it was discovered as an attached boundary message event on a task trace'
+      );
+      return;
+    }
+
+    if (this.shouldCorrelateMessageEvent(traceAction)) {
+      void this.correlateMessageEvent(element, messageRef);
+      return;
+    }
+
+    console.log(
+      `[PlayRuntime] Message correlation skipped for "${element?.id || '(unknown)'}" ` +
+      `because trace action is "${traceAction || '(none)'}" and taskHandlingMode=${this.taskHandlingMode}`
+    );
+  }
+
+  private shouldCorrelateMessageEvent(traceAction: string | undefined): boolean {
+    if (this.taskHandlingMode === 'auto-complete') {
+      return traceAction === 'enter';
+    }
+
+    return traceAction === 'signal';
+  }
+
+  private async correlateMessageEvent(element: any, messageRef: any): Promise<void> {
+    const elementId = element?.id;
+    const messageName = messageRef?.name;
+
+    console.log(
+      `[PlayRuntime] correlateMessageEvent requested ` +
+      `(element=${elementId || '(none)'}, messageName=${messageName || '(none)'}, ` +
+      `correlationKey=${this.hardcodedMessageCorrelationKey}, playModeActive=${this.playModeActive}, ` +
+      `tokenSimulationActive=${this.tokenSimulationActive})`
+    );
+
+    if (!this.playModeActive || !this.tokenSimulationActive) {
+      console.warn(
+        `[PlayRuntime] Message correlation blocked for "${elementId || '(unknown)'}" ` +
+        `because playModeActive=${this.playModeActive}, tokenSimulationActive=${this.tokenSimulationActive}`
+      );
+      return;
+    }
+
+    if (!elementId) {
+      console.warn('[PlayRuntime] Cannot correlate message event without element id:', element);
+      return;
+    }
+
+    if (!messageName) {
+      console.warn(`[PlayRuntime] Cannot correlate message event "${elementId}" without message name`, {
+        messageId: messageRef?.id
+      });
+      return;
+    }
+
+    if (this.correlatedMessageEventElementIds.has(elementId)) {
+      console.log(`[PlayRuntime] Message event "${elementId}" already correlated for this runtime session`);
+      return;
+    }
+
+    this.correlatedMessageEventElementIds.add(elementId);
+
+    try {
+      this.updateStatus(
+        'starting',
+        `Correlating message ${messageName} with key ${this.hardcodedMessageCorrelationKey}...`,
+        this.currentProcessInstanceKey
+      );
+
+      console.log(
+        `[PlayRuntime] Calling Camunda message correlation API ` +
+        `(messageName=${messageName}, correlationKey=${this.hardcodedMessageCorrelationKey}, element=${elementId})`
+      );
+
+      const response = await this.camunda8Client.correlateMessage(
+        messageName,
+        this.hardcodedMessageCorrelationKey
+      );
+
+      console.log('[PlayRuntime] Message correlation API response:', response);
+
+      this.updateStatus(
+        'success',
+        `Correlated message ${messageName} with key ${this.hardcodedMessageCorrelationKey}.`,
+        response.processInstanceKey || this.currentProcessInstanceKey
+      );
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error occurred';
+
+      console.error(`[PlayRuntime] Failed to correlate message event "${elementId}": ${errorMessage}`, error);
+      this.updateStatus('error', errorMessage, this.currentProcessInstanceKey);
+      this.correlatedMessageEventElementIds.delete(elementId);
+    }
+  }
+
+  private logAttachedMessageEventTraces(event: any, element: any): void {
+    const elementId = element?.id;
+
+    if (!elementId) {
+      return;
+    }
+
+    const attachedMessageEvents =
+      this.modelerAdapter.getAttachedMessageEventElements(elementId);
+
+    attachedMessageEvents.forEach((attachedMessageEvent) => {
+      this.logMessageEventTrace(event, attachedMessageEvent, false);
+    });
   }
 
   private continueUserTaskToken(task: UserTask): void {

@@ -29,6 +29,10 @@ export interface ProcessInstanceResponse {
   creationTimestamp: number;
 }
 
+export interface MessageCorrelationResponse {
+  processInstanceKey?: string;
+}
+
 export interface UserTask {
   userTaskKey?: string;
   key?: string;
@@ -40,6 +44,22 @@ export interface UserTask {
   name?: string;
   state?: string;
   processInstanceKey?: string;
+}
+
+export interface ActivatedJob {
+  jobKey?: string | number;
+  key?: string | number;
+  type?: string;
+  processInstanceKey?: string | number;
+  elementId?: string;
+  flowNodeId?: string;
+  bpmnElementId?: string;
+  retries?: number;
+  variables?: Record<string, any>;
+}
+
+interface ActivateJobsResponse {
+  jobs?: ActivatedJob[];
 }
 
 interface SearchResponse<T> {
@@ -233,6 +253,89 @@ export class Camunda8ClientService {
       console.log(`✅ [Camunda8] User task completed - Key: ${userTaskKey}`);
     } catch (error) {
       throw this.handleError(error, `Failed to complete user task ${userTaskKey}`);
+    }
+  }
+
+  async activateJobs(
+    type: string,
+    worker: string = 'bpmn-process-designer-play-mode'
+  ): Promise<ActivatedJob[]> {
+    try {
+      const url = `${this.restAddress}/v2/jobs/activation`;
+      const body = {
+        type,
+        worker,
+        timeout: 300000,
+        maxJobsToActivate: 1,
+        fetchVariable: [],
+        requestTimeout: 5000
+      };
+
+      console.log(`[Camunda8] POST ${url} activate jobs body:`, body);
+
+      const response = await firstValueFrom(
+        this.http.post<ActivateJobsResponse>(url, body, {
+          headers: await this.getAuthHeaders()
+        })
+      );
+
+      console.log('[Camunda8] Job activation response:', response);
+
+      return response.jobs || [];
+    } catch (error) {
+      throw this.handleError(error, `Failed to activate jobs of type ${type}`);
+    }
+  }
+
+  async completeJob(jobKey: string, variables?: Record<string, any>): Promise<void> {
+    try {
+      const url = `${this.restAddress}/v2/jobs/${encodeURIComponent(jobKey)}/completion`;
+      const body = {
+        variables: variables || {}
+      };
+
+      console.log(`[Camunda8] POST ${url} complete job body:`, body);
+
+      await firstValueFrom(
+        this.http.post<void>(url, body, {
+          headers: await this.getAuthHeaders()
+        })
+      );
+
+      console.log(`âœ… [Camunda8] Job completed - Key: ${jobKey}`);
+    } catch (error) {
+      throw this.handleError(error, `Failed to complete job ${jobKey}`);
+    }
+  }
+
+  async correlateMessage(
+    name: string,
+    correlationKey: string,
+    variables?: Record<string, any>
+  ): Promise<MessageCorrelationResponse> {
+    try {
+      const url = `${this.restAddress}/v2/messages/correlation`;
+      const body = {
+        name,
+        correlationKey,
+        variables: variables || {}
+      };
+
+      console.log(`[Camunda8] POST ${url} correlate message body:`, body);
+
+      const response = await firstValueFrom(
+        this.http.post<MessageCorrelationResponse>(url, body, {
+          headers: await this.getAuthHeaders()
+        })
+      );
+
+      console.log(
+        `[Camunda8] Message correlated - Process Instance Key: ${response.processInstanceKey || '(none)'}`
+      );
+
+      return response;
+    } catch (error) {
+      throw this.handleError(error, `Failed to correlate message ${name}`);
     }
   }
 
