@@ -46,7 +46,7 @@ export class PlayRuntimeIntegrationService {
   private readonly completingUserTaskElementIds = new Set<string>();
   private readonly completingServiceTaskElementIds = new Set<string>();
   private readonly correlatedMessageEventElementIds = new Set<string>();
-  private readonly hardcodedMessageCorrelationKey = '123';
+  private readonly defaultMessageCorrelationKey = '123';
 
   constructor(
     private readonly modelerAdapter: BpmnModelerAdapterService,
@@ -60,8 +60,8 @@ export class PlayRuntimeIntegrationService {
     try {
       const eventBus = this.modelerAdapter.getEventBus();
 
-      console.log('🔧 [PlayRuntime] Initializing PlayRuntimeIntegrationService');
-      console.log('👂 [PlayRuntime] Subscribing to token simulator events...');
+      console.log('[PlayRuntime] Initializing PlayRuntimeIntegrationService');
+      console.log('[PlayRuntime] Subscribing to token simulator events...');
 
       eventBus.on('tokenSimulation.playSimulation', () => {
         console.log(
@@ -187,21 +187,21 @@ export class PlayRuntimeIntegrationService {
         }
 
         if (event.active) {
-          console.log('🟢 [PlayRuntime] Token simulation toggled ON in Play mode - Deploying BPMN');
+          console.log('[PlayRuntime] Token simulation toggled ON in Play mode - Deploying BPMN');
           this.modelerAdapter.setTaskPausePoints(true);
           this.ensureDeployment();
         } else {
-          console.log('🔴 [PlayRuntime] Token simulation toggled OFF in Play mode - Resetting runtime session');
+          console.log('[PlayRuntime] Token simulation toggled OFF in Play mode - Resetting runtime session');
           this.modelerAdapter.setTaskPausePoints(false);
           this.resetRuntimeSession();
         }
       });
 
-      console.log('✅ [PlayRuntime] Initialization complete - Ready to intercept token simulation');
+      console.log('[PlayRuntime] Initialization complete - Ready to intercept token simulation');
 
       this.updateStatus('idle', 'Play mode is off');
     } catch (error) {
-      console.error('❌ [PlayRuntime] Initialization failed:', error);
+      console.error('[PlayRuntime] Initialization failed:', error);
       this.updateStatus('error', 'Failed to initialize runtime integration');
     }
   }
@@ -330,7 +330,7 @@ export class PlayRuntimeIntegrationService {
       this.completingUserTaskElementIds.clear();
       this.correlatedMessageEventElementIds.clear();
 
-      console.log(`✅ [PlayRuntime] Process Instance START SUCCESS - Instance Key: "${processInstanceKey}"`);
+      console.log(`[PlayRuntime] Process Instance START SUCCESS - Instance Key: "${processInstanceKey}"`);
 
       if (this.taskHandlingMode === 'auto-complete') {
         this.updateStatus(
@@ -350,7 +350,7 @@ export class PlayRuntimeIntegrationService {
       const errorMessage =
         error instanceof Error ? error.message : 'Unknown error occurred';
 
-      console.error(`❌ [PlayRuntime] FAILED: ${errorMessage}`, error);
+      console.error(`[PlayRuntime] FAILED: ${errorMessage}`, error);
 
       this.updateStatus('error', errorMessage);
       this.instanceStarted = false;
@@ -386,7 +386,7 @@ export class PlayRuntimeIntegrationService {
 
       // Get the latest BPMN XML from the modeler
       const bpmnXml = await this.modelerAdapter.saveXml();
-      console.log('📄 [PlayRuntime] BPMN XML exported successfully');
+      console.log('[PlayRuntime] BPMN XML exported successfully');
 
       // Extract the process ID
       const processId = this.modelerAdapter.getExecutableProcessId();
@@ -399,9 +399,9 @@ export class PlayRuntimeIntegrationService {
         );
       }
 
-      console.log(`📋 [PlayRuntime] Process ID extracted: "${processId}"`);
+      console.log(`[PlayRuntime] Process ID extracted: "${processId}"`);
 
-      console.log(`🚀 [PlayRuntime] Starting Camunda 8 deployment for process: "${processId}"`);
+      console.log(`[PlayRuntime] Starting Camunda 8 deployment for process: "${processId}"`);
       this.updateStatus('deploying', `Deploying BPMN (Process ID: ${processId})...`);
 
       const deployment = await this.camunda8Client.deployBpmnXml(bpmnXml, 'process.bpmn');
@@ -419,12 +419,12 @@ export class PlayRuntimeIntegrationService {
       this.deployedProcessDefinition = processDefinition;
       this.updateStatus('waiting', `BPMN deployed: ${deploymentKey}. Waiting for token simulation play...`);
 
-      console.log('🎉 [PlayRuntime] Camunda 8 deployment complete; waiting for play to start instance');
+      console.log('[PlayRuntime] Camunda 8 deployment complete; waiting for play to start instance');
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : 'Unknown error occurred';
 
-      console.error(`❌ [PlayRuntime] FAILED: ${errorMessage}`, error);
+      console.error(`[PlayRuntime] FAILED: ${errorMessage}`, error);
 
       this.updateStatus('error', errorMessage);
 
@@ -853,7 +853,7 @@ export class PlayRuntimeIntegrationService {
     console.log(
       `[PlayRuntime] correlateMessageEvent requested ` +
       `(element=${elementId || '(none)'}, messageName=${messageName || '(none)'}, ` +
-      `correlationKey=${this.hardcodedMessageCorrelationKey}, playModeActive=${this.playModeActive}, ` +
+      `correlationKey=${this.defaultMessageCorrelationKey}, playModeActive=${this.playModeActive}, ` +
       `tokenSimulationActive=${this.tokenSimulationActive})`
     );
 
@@ -887,25 +887,25 @@ export class PlayRuntimeIntegrationService {
     try {
       this.updateStatus(
         'starting',
-        `Correlating message ${messageName} with key ${this.hardcodedMessageCorrelationKey}...`,
+        `Correlating message ${messageName} with key ${this.defaultMessageCorrelationKey}...`,
         this.currentProcessInstanceKey
       );
 
       console.log(
         `[PlayRuntime] Calling Camunda message correlation API ` +
-        `(messageName=${messageName}, correlationKey=${this.hardcodedMessageCorrelationKey}, element=${elementId})`
+        `(messageName=${messageName}, correlationKey=${this.defaultMessageCorrelationKey}, element=${elementId})`
       );
 
       const response = await this.camunda8Client.correlateMessage(
         messageName,
-        this.hardcodedMessageCorrelationKey
+        this.defaultMessageCorrelationKey
       );
 
       console.log('[PlayRuntime] Message correlation API response:', response);
 
       this.updateStatus(
         'success',
-        `Correlated message ${messageName} with key ${this.hardcodedMessageCorrelationKey}.`,
+        `Correlated message ${messageName} with key ${this.defaultMessageCorrelationKey}.`,
         response.processInstanceKey || this.currentProcessInstanceKey
       );
     } catch (error) {
@@ -967,3 +967,4 @@ export class PlayRuntimeIntegrationService {
     });
   }
 }
+

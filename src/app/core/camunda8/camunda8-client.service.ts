@@ -98,7 +98,7 @@ export class Camunda8ClientService {
     fileName: string = 'process.bpmn'
   ): Promise<DeploymentResponse> {
     try {
-      console.log(`📤 [Camunda8] Deploying BPMN file: "${fileName}" to ${this.restAddress}/v2/deployments`);
+      console.log(`[Camunda8] Deploying BPMN file: "${fileName}" to ${this.restAddress}/v2/deployments`);
 
       const formData = new FormData();
       const file = new File([bpmnXml], fileName, { type: 'application/xml' });
@@ -111,7 +111,7 @@ export class Camunda8ClientService {
         this.http.post<DeploymentResponse>(url, formData, { headers })
       );
 
-      console.log(`✅ [Camunda8] Deployment successful - Key: ${response.deploymentKey}`);
+      console.log(`[Camunda8] Deployment successful - Key: ${response.deploymentKey}`);
       console.log(`   Processes deployed:`, this.getDeployedProcessDefinitions(response).map(p => `${p.processDefinitionId} v${p.processDefinitionVersion}`).join(', '));
 
 
@@ -134,7 +134,7 @@ export class Camunda8ClientService {
           `Received processDefinitionId="${processDefinitionId}", processDefinitionVersion="${processDefinitionVersion}".`
         );
       }
-      console.log(`🚀 [Camunda8] Starting process instance for: "${processDefinitionId}" v${processDefinitionVersion} at ${url}`);
+      console.log(`[Camunda8] Starting process instance for: "${processDefinitionId}" v${processDefinitionVersion} at ${url}`);
 
       const body = {
         "processDefinitionId": processDefinitionId,
@@ -150,7 +150,7 @@ export class Camunda8ClientService {
         })
       );
 
-      console.log(`✅ [Camunda8] Process instance started - Key: ${response.processInstanceKey}`);
+      console.log(`[Camunda8] Process instance started - Key: ${response.processInstanceKey}`);
       console.log(`   Process: ${response.processDefinitionId || response.bpmnProcessId} (v${response.processDefinitionVersion || response.version})`);
 
       return response;
@@ -166,7 +166,7 @@ export class Camunda8ClientService {
     variables?: Record<string, any>
   ): Promise<{ deployment: DeploymentResponse; instance: ProcessInstanceResponse }> {
     try {
-      console.log(`⚙️  [Camunda8] Starting deployAndStart workflow for process: "${bpmnProcessId}"`);
+      console.log(`[Camunda8] Starting deployAndStart workflow for process: "${bpmnProcessId}"`);
 
       const deployment = await this.deployBpmnXml(bpmnXml, fileName);
       const processDefinition = this.findDeployedProcessDefinition(deployment, bpmnProcessId);
@@ -176,7 +176,7 @@ export class Camunda8ClientService {
         variables
       );
 
-      console.log(`🎯 [Camunda8] deployAndStart workflow complete`);
+      console.log(`[Camunda8] deployAndStart workflow complete`);
 
       return {
         deployment,
@@ -250,7 +250,7 @@ export class Camunda8ClientService {
         })
       );
 
-      console.log(`✅ [Camunda8] User task completed - Key: ${userTaskKey}`);
+      console.log(`[Camunda8] User task completed - Key: ${userTaskKey}`);
     } catch (error) {
       throw this.handleError(error, `Failed to complete user task ${userTaskKey}`);
     }
@@ -302,7 +302,7 @@ export class Camunda8ClientService {
         })
       );
 
-      console.log(`âœ… [Camunda8] Job completed - Key: ${jobKey}`);
+      console.log(`[Camunda8] Job completed - Key: ${jobKey}`);
     } catch (error) {
       throw this.handleError(error, `Failed to complete job ${jobKey}`);
     }
@@ -446,7 +446,8 @@ export class Camunda8ClientService {
       details += `: ${error}`;
     }
 
-    console.error(`❌ [Camunda8] ${details}`, error);
+    console.error(`[Camunda8] ${details}`, error);
     return new Error(details);
   }
 }
+
