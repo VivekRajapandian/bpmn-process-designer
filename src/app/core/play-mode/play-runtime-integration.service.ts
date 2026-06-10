@@ -37,6 +37,7 @@ export class PlayRuntimeIntegrationService {
   private deploymentTriggered = false;
   private instanceStarted = false;
   private instanceStartInProgress = false;
+  private runtimeInstanceCompleted = false;
   private playModeActive = false;
   private tokenSimulationActive = false;
   private taskHandlingMode: TaskHandlingMode = 'manual';
@@ -149,6 +150,27 @@ export class PlayRuntimeIntegrationService {
           this.taskHandlingMode === 'auto-complete'
         ) {
           void this.completeServiceTaskJobAtElement(element, true);
+        }
+      });
+
+      eventBus.on('tokenSimulation.simulator.destroyScope', (event: any) => {
+        const scope = event?.scope;
+        const element = scope?.element;
+        console.log(
+          `[PlayRuntime] tokenSimulation.simulator.destroyScope received ` +
+          `(scopeElement=${element?.id || '(unknown)'}, type=${element?.type || '(none)'}, ` +
+          `completed=${Boolean(scope?.completed)}, playModeActive=${this.playModeActive}, ` +
+          `tokenSimulationActive=${this.tokenSimulationActive}, instanceStarted=${this.instanceStarted}, ` +
+          `runtimeInstanceCompleted=${this.runtimeInstanceCompleted})`
+        );
+
+        if (
+          this.playModeActive &&
+          this.tokenSimulationActive &&
+          scope?.completed &&
+          this.isRootSimulationScope(element)
+        ) {
+          this.markRuntimeInstanceCompleted();
         }
       });
 
@@ -270,6 +292,7 @@ export class PlayRuntimeIntegrationService {
     this.deploymentTriggered = false;
     this.instanceStarted = false;
     this.instanceStartInProgress = false;
+    this.runtimeInstanceCompleted = false;
     this.deploymentPromise = undefined;
     this.deployedProcessDefinition = undefined;
     this.currentProcessInstanceKey = undefined;
@@ -279,11 +302,44 @@ export class PlayRuntimeIntegrationService {
     this.updateStatus('waiting', 'Play mode is on - enable token simulation to deploy');
   }
 
+  private markRuntimeInstanceCompleted(): void {
+    if (!this.instanceStarted && !this.currentProcessInstanceKey) {
+      return;
+    }
+
+    console.log(
+      `[PlayRuntime] Runtime instance session completed ` +
+      `(processInstanceKey=${this.currentProcessInstanceKey || '(none)'})`
+    );
+
+    this.instanceStarted = false;
+    this.instanceStartInProgress = false;
+    this.runtimeInstanceCompleted = true;
+    this.updateStatus('waiting', 'Process instance completed. Click play to start a new instance.');
+  }
+
+  private clearCompletedRuntimeInstanceSession(): void {
+    console.log(
+      `[PlayRuntime] Clearing completed runtime instance before starting a new one ` +
+      `(processInstanceKey=${this.currentProcessInstanceKey || '(none)'})`
+    );
+
+    this.instanceStarted = false;
+    this.instanceStartInProgress = false;
+    this.runtimeInstanceCompleted = false;
+    this.currentProcessInstanceKey = undefined;
+    this.completingUserTaskElementIds.clear();
+    this.completingServiceTaskElementIds.clear();
+    this.correlatedMessageEventElementIds.clear();
+  }
+
   async startProcessInstance(): Promise<void> {
     console.log(
       `[PlayRuntime] startProcessInstance requested ` +
       `(playModeActive=${this.playModeActive}, tokenSimulationActive=${this.tokenSimulationActive}, ` +
       `deploymentTriggered=${this.deploymentTriggered}, instanceStarted=${this.instanceStarted}, ` +
+      `runtimeInstanceCompleted=${this.runtimeInstanceCompleted}, ` +
+      `hasProcessInstanceKey=${Boolean(this.currentProcessInstanceKey)}, ` +
       `hasDeployment=${Boolean(this.deployedProcessDefinition)})`
     );
 
@@ -299,13 +355,23 @@ export class PlayRuntimeIntegrationService {
       return;
     }
 
-    if (this.instanceStartInProgress || this.instanceStarted) {
+    if (this.instanceStartInProgress) {
       console.warn('[PlayRuntime] Start blocked: instance already started for this simulation session');
       return;
     }
 
+    if ((this.instanceStarted || this.currentProcessInstanceKey) && !this.runtimeInstanceCompleted) {
+      console.warn('[PlayRuntime] Start blocked: process instance is still active for this simulation session');
+      return;
+    }
+
+    if (this.runtimeInstanceCompleted) {
+      this.clearCompletedRuntimeInstanceSession();
+    }
+
     this.instanceStartInProgress = true;
     this.instanceStarted = true;
+    this.runtimeInstanceCompleted = false;
 
     try {
       await this.ensureDeployment();
@@ -329,6 +395,7 @@ export class PlayRuntimeIntegrationService {
       this.currentProcessInstanceKey = processInstanceKey;
       this.completingUserTaskElementIds.clear();
       this.correlatedMessageEventElementIds.clear();
+      this.runtimeInstanceCompleted = false;
 
       console.log(`[PlayRuntime] Process Instance START SUCCESS - Instance Key: "${processInstanceKey}"`);
 
@@ -354,6 +421,7 @@ export class PlayRuntimeIntegrationService {
 
       this.updateStatus('error', errorMessage);
       this.instanceStarted = false;
+      this.runtimeInstanceCompleted = false;
     } finally {
       this.instanceStartInProgress = false;
     }
@@ -779,6 +847,10 @@ export class PlayRuntimeIntegrationService {
 
   private isMessageEventElement(element: any): boolean {
     return this.getMessageEventDefinition(element) !== undefined;
+  }
+
+  private isRootSimulationScope(element: any): boolean {
+    return element?.type === 'bpmn:Process' || element?.type === 'bpmn:Participant';
   }
 
   private getMessageEventDefinition(element: any): any | undefined {
