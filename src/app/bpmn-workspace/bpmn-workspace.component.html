@@ -12,7 +12,7 @@
     (zoomOut)="zoomOut()"
   />
 
-  <section class="body">
+  <section class="body" [class.properties-hidden]="tokenSimulationActive">
     <app-workflow-explorer
       [workflows]="samples"
       [activeWorkflowId]="workflow.id"
@@ -21,7 +21,7 @@
       (workflowDeleted)="deleteWorkflow($event)"
     />
 
-    <section class="modeler">
+    <section class="modeler" [class.play-mode-active]="activeMode === 'play'">
       <div class="canvas-header">
         <div>
           <div class="title-row">
@@ -39,13 +39,62 @@
         </div>
       </div>
 
-      <div class="play-mode-panel">
-        <strong>Play Mode: Token simulation</strong>
-        <span>Powered by bpmn-js-token-simulation.</span>
-        <span>No Camunda deployment is performed in this version.</span>
+      <div class="mode-bar">
+        <nav class="mode-tabs" aria-label="Modeler mode">
+          <button
+            type="button"
+            [class.active]="activeMode === 'design'"
+            (click)="setWorkspaceMode('design')"
+          >
+            Design
+          </button>
+          <button
+            type="button"
+            [class.active]="activeMode === 'play'"
+            (click)="setWorkspaceMode('play')"
+          >
+            Play mode
+          </button>
+        </nav>
+
+        <button
+          type="button"
+          class="token-toggle"
+          [class.active]="tokenSimulationActive"
+          [attr.aria-pressed]="tokenSimulationActive"
+          (click)="toggleTokenSimulation()"
+        >
+          <span class="toggle-track">
+            <span class="toggle-thumb"></span>
+          </span>
+          Token simulation
+        </button>
       </div>
 
-      <app-bpmn-canvas />
+      <div class="play-options" *ngIf="activeMode === 'play'">
+        <label class="auto-complete-option">
+          <input
+            type="checkbox"
+            [checked]="taskHandlingMode === 'auto-complete'"
+            (change)="setAutoComplete($any($event.target).checked)"
+          />
+          Auto-complete
+        </label>
+      </div>
+
+      <app-runtime-status *ngIf="activeMode === 'play'" />
+
+      <div class="canvas-shell" [class.canvas-blocked]="isCanvasBlocked()">
+        <app-bpmn-canvas />
+        <div class="canvas-blocker" *ngIf="isCanvasBlocked()" aria-live="polite">
+          <span
+            class="canvas-blocker-spinner"
+            *ngIf="activeMode === 'play' && runtimeStatus.state === 'deploying'"
+            aria-hidden="true"
+          ></span>
+          {{ getCanvasBlockMessage() }}
+        </div>
+      </div>
 
       <app-problems-panel
         [problems]="problems"
@@ -53,7 +102,7 @@
       />
     </section>
 
-    <aside class="right-panel">
+    <aside class="right-panel" [class.hidden-by-simulation]="tokenSimulationActive">
       <div class="tabs" role="tablist" aria-label="Inspector panels">
         <button
           type="button"

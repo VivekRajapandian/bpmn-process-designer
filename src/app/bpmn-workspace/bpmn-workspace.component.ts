@@ -22,8 +22,15 @@ import { WorkflowValidationService } from '../services/workflow-validation.servi
 import { ToolbarComponent } from '../toolbar/toolbar.component';
 import { WorkflowExplorerComponent } from '../workflow-explorer/workflow-explorer.component';
 import { XmlViewerComponent } from '../xml-viewer/xml-viewer.component';
+import { RuntimeStatusComponent } from '../core/play-mode/runtime-status.component';
+import {
+  PlayRuntimeIntegrationService,
+  RuntimeStatus,
+  TaskHandlingMode
+} from '../core/play-mode/play-runtime-integration.service';
 
 type RightPanel = 'properties' | 'xml';
+type WorkspaceMode = 'design' | 'play';
 interface WorkflowDetails {
   name: string;
   engineType: EngineType;
@@ -40,7 +47,8 @@ interface WorkflowDetails {
     PropertiesPanelComponent,
     ToolbarComponent,
     WorkflowExplorerComponent,
-    XmlViewerComponent
+    XmlViewerComponent,
+    RuntimeStatusComponent
   ],
   templateUrl: './bpmn-workspace.component.html',
   styleUrl: './bpmn-workspace.component.scss'
@@ -55,6 +63,13 @@ export class BpmnWorkspaceComponent implements AfterViewInit, OnDestroy {
   workflow!: Workflow;
   problems: WorkflowProblem[] = [];
   activePanel: RightPanel = 'properties';
+  activeMode: WorkspaceMode = 'design';
+  tokenSimulationActive = false;
+  taskHandlingMode: TaskHandlingMode = 'manual';
+  runtimeStatus: RuntimeStatus = {
+    state: 'idle',
+    message: 'Play mode is off'
+  };
   saveMessage = '';
   engineChoice?: {
     title: string;
@@ -81,7 +96,8 @@ export class BpmnWorkspaceComponent implements AfterViewInit, OnDestroy {
     private readonly bpmnAdapter: BpmnModelerAdapterService,
     private readonly sampleWorkflows: SampleWorkflowsService,
     private readonly workflowState: WorkflowStateService,
-    private readonly workflowValidation: WorkflowValidationService
+    private readonly workflowValidation: WorkflowValidationService,
+    private readonly runtimeIntegration: PlayRuntimeIntegrationService
   ) {
     this.workflow = this.workflowState.workflow;
     this.samples = this.workflowState.samples;
@@ -94,6 +110,18 @@ export class BpmnWorkspaceComponent implements AfterViewInit, OnDestroy {
       this.workflow.engineType
     );
 
+    // Initialize Camunda 8 runtime integration for token simulator
+    this.runtimeIntegration.initialize();
+    this.runtimeIntegration.setPlayModeActive(false);
+
+    this.bpmnAdapter.getEventBus().on('tokenSimulation.toggleMode', (event: any) => {
+      console.log(
+        `[Workspace] tokenSimulation.toggleMode observed: active=${Boolean(event.active)} ` +
+        `(activeMode=${this.activeMode})`
+      );
+      this.tokenSimulationActive = Boolean(event.active);
+    });
+
     this.subscription.add(
       this.workflowState.workflow$.subscribe((workflow) => {
         this.workflow = workflow;
@@ -103,6 +131,12 @@ export class BpmnWorkspaceComponent implements AfterViewInit, OnDestroy {
     this.subscription.add(
       this.workflowState.problems$.subscribe((problems) => {
         this.problems = problems;
+      })
+    );
+
+    this.subscription.add(
+      this.runtimeIntegration.getStatus().subscribe((status) => {
+        this.runtimeStatus = status;
       })
     );
 
@@ -269,6 +303,59 @@ export class BpmnWorkspaceComponent implements AfterViewInit, OnDestroy {
 
   renameWorkflow(): void {
     void this.renameCurrentWorkflow();
+  }
+
+  setWorkspaceMode(mode: WorkspaceMode): void {
+    console.log(
+      `[Workspace] Mode changed: ${this.activeMode} -> ${mode} ` +
+      `(tokenSimulationActive=${this.tokenSimulationActive})`
+    );
+
+    this.activeMode = mode;
+    this.runtimeIntegration.setPlayModeActive(mode === 'play');
+
+    if (mode === 'design' && this.tokenSimulationActive) {
+      this.bpmnAdapter.setTokenSimulationActive(false);
+      this.tokenSimulationActive = false;
+      return;
+    }
+
+    if (mode === 'play' && !this.tokenSimulationActive) {
+      this.bpmnAdapter.setTokenSimulationActive(true);
+      this.tokenSimulationActive = true;
+    }
+  }
+
+  setTaskHandlingMode(mode: TaskHandlingMode): void {
+    console.log(`[Workspace] Play task handling changed: ${this.taskHandlingMode} -> ${mode}`);
+    this.taskHandlingMode = mode;
+    this.runtimeIntegration.setTaskHandlingMode(mode);
+  }
+
+  setAutoComplete(enabled: boolean): void {
+    this.setTaskHandlingMode(enabled ? 'auto-complete' : 'manual');
+  }
+
+  isCanvasBlocked(): boolean {
+    return this.activeMode === 'play' && this.runtimeStatus.state === 'deploying';
+  }
+
+  getCanvasBlockMessage(): string {
+    if (this.activeMode === 'play' && this.runtimeStatus.state === 'deploying') {
+      return 'Deploying to Camunda...';
+    }
+
+    return '';
+  }
+
+  toggleTokenSimulation(): void {
+    const nextActive = !this.tokenSimulationActive;
+    console.log(
+      `[Workspace] Token simulation toggle clicked: ${this.tokenSimulationActive} -> ${nextActive} ` +
+      `(activeMode=${this.activeMode})`
+    );
+    this.bpmnAdapter.setTokenSimulationActive(nextActive);
+    this.tokenSimulationActive = nextActive;
   }
 
   resolveEngineChoice(): void {

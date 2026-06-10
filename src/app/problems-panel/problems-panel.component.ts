@@ -26,7 +26,7 @@ import { WorkflowProblem } from '../models/workflow-problem.model';
         <code *ngIf="problem.elementId">{{ problem.elementId }}</code>
       </button>
 
-      <p *ngIf="!problems.length">No validation problems. The current XML passes the MVP checks.</p>
+      <p *ngIf="!problems.length">No validation problems. The current XML passes validation.</p>
     </section>
   `,
   styleUrl: './problems-panel.component.scss'

@@ -21,6 +21,7 @@ export class BpmnModelerAdapterService {
   private propertiesPanel?: HTMLElement;
   private engineType?: EngineType;
   private zoomLevel = 1;
+  private readonly autoPausePointPreviousState = new Map<string, boolean>();
 
   readonly changed$ = new Subject<void>();
 
@@ -168,7 +169,197 @@ export class BpmnModelerAdapterService {
     if (this.modeler) {
       this.modeler.destroy();
       this.modeler = undefined;
+      this.autoPausePointPreviousState.clear();
     }
+  }
+
+  /**
+   * Get the underlying BPMN.js modeler instance.
+   * Use with caution - prefer using adapter methods when possible.
+   */
+  getModeler(): any {
+    this.ensureModeler();
+    return this.modeler;
+  }
+
+  /**
+   * Get the eventBus from the modeler for subscribing to events.
+   */
+  getEventBus(): any {
+    this.ensureModeler();
+    return this.modeler.get('eventBus');
+  }
+
+  isTokenSimulationActive(): boolean {
+    this.ensureModeler();
+    return Boolean(this.modeler.get('toggleMode')?._active);
+  }
+
+  setTokenSimulationActive(active: boolean): void {
+    this.ensureModeler();
+    this.modeler.get('toggleMode').toggleMode(active);
+  }
+
+  setUserTaskPausePoints(active: boolean): void {
+    this.setTaskPausePoints(active);
+  }
+
+  setTaskPausePoints(active: boolean): void {
+    this.ensureModeler();
+
+    const simulator = this.modeler.get('simulator');
+    const taskElements = this.getPlayModePausePointElements();
+
+    if (active) {
+      taskElements.forEach((element: any) => {
+        if (!this.autoPausePointPreviousState.has(element.id)) {
+          this.autoPausePointPreviousState.set(
+            element.id,
+            Boolean(simulator.getConfig(element).wait)
+          );
+        }
+
+        simulator.waitAtElement(element, true);
+      });
+
+      console.log(`[BpmnAdapter] Added Play mode pause points to ${taskElements.length} task(s)`);
+      return;
+    }
+
+    this.autoPausePointPreviousState.forEach((wasPaused, elementId) => {
+      const element = this.modeler.get('elementRegistry').get(elementId);
+
+      if (element) {
+        simulator.waitAtElement(element, wasPaused);
+      }
+    });
+
+    console.log(
+      `[BpmnAdapter] Restored ${this.autoPausePointPreviousState.size} Play mode pause point(s)`
+    );
+    this.autoPausePointPreviousState.clear();
+  }
+
+  continueUserTaskToken(elementId?: string): boolean {
+    return this.continueTokenAtElements(elementId, this.getUserTaskElements());
+  }
+
+  continueTaskToken(elementId?: string): boolean {
+    return this.continueTokenAtElements(elementId, this.getPlayModePausePointElements());
+  }
+
+  private continueTokenAtElements(elementId: string | undefined, fallbackElements: any[]): boolean {
+    this.ensureModeler();
+
+    const simulator = this.modeler.get('simulator');
+    const elementRegistry = this.modeler.get('elementRegistry');
+    const candidateElements = elementId
+      ? [elementRegistry.get(elementId)].filter(Boolean)
+      : fallbackElements;
+
+    for (const element of candidateElements) {
+      const subscriptions = simulator
+        .findSubscriptions({ element })
+        .filter((subscription: any) => subscription.event?.type === 'continue');
+
+      if (subscriptions.length === 0) {
+        continue;
+      }
+
+      simulator.trigger({
+        event: subscriptions[0].event,
+        scope: subscriptions[0].scope
+      });
+
+      console.log(`[BpmnAdapter] Continued paused token at task "${element.id}"`);
+      return true;
+    }
+
+    console.log(
+      `[BpmnAdapter] No paused task token found${elementId ? ` for "${elementId}"` : ''}`
+    );
+    return false;
+  }
+
+  /**
+   * Extract the executable process ID from the current modeler.
+   * Returns the first executable process id, or undefined if not found.
+   */
+  getExecutableProcessId(): string | undefined {
+    this.ensureModeler();
+
+    try {
+      const rootElement = this.modeler.get('canvas').getRootElement();
+
+      if (!rootElement) {
+        return undefined;
+      }
+
+      // For process definitions
+      if (rootElement.type === 'bpmn:Process') {
+        return rootElement.id;
+      }
+
+      // For collaboration (find first executable process)
+      if (rootElement.type === 'bpmn:Collaboration' && rootElement.participants) {
+        for (const participant of rootElement.participants) {
+          const process = participant.processRef;
+          if (process?.id && process.isExecutable !== false) {
+            return process.id;
+          }
+        }
+      }
+
+      return undefined;
+    } catch (error) {
+      console.error('Failed to extract process ID from modeler:', error);
+      return undefined;
+    }
+  }
+
+  getAttachedMessageEventElements(elementId: string): any[] {
+    this.ensureModeler();
+
+    const attachedMessageEvents: any[] = [];
+    this.modeler.get('elementRegistry').forEach((element: any) => {
+      if (
+        element?.businessObject?.attachedToRef?.id === elementId &&
+        this.hasMessageEventDefinition(element)
+      ) {
+        attachedMessageEvents.push(element);
+      }
+    });
+
+    return attachedMessageEvents;
+  }
+
+  private getUserTaskElements(): any[] {
+    return this.getElementsByTypes(['bpmn:UserTask']);
+  }
+
+  private hasMessageEventDefinition(element: any): boolean {
+    const eventDefinitions = element?.businessObject?.eventDefinitions || [];
+
+    return eventDefinitions.some(
+      (definition: any) => definition?.$type === 'bpmn:MessageEventDefinition'
+    );
+  }
+
+  private getPlayModePausePointElements(): any[] {
+    return this.getElementsByTypes(['bpmn:UserTask', 'bpmn:ServiceTask']);
+  }
+
+  private getElementsByTypes(types: string[]): any[] {
+    this.ensureModeler();
+
+    const elements: any[] = [];
+    this.modeler.get('elementRegistry').forEach((element: any) => {
+      if (types.includes(element.type)) {
+        elements.push(element);
+      }
+    });
+
+    return elements;
   }
 
   private setZoom(level: number): void {
