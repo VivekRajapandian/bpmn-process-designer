@@ -279,6 +279,28 @@ p {
   accent-color: #2f6df6;
 }
 
+.save-scenario-button {
+  min-height: 30px;
+  padding: 0 16px;
+  border: 1px solid #2f6df6;
+  border-radius: 2px;
+  background: #2f6df6;
+  color: #ffffff;
+  cursor: pointer;
+  font: 700 12px/1 system-ui, sans-serif;
+}
+
+.save-scenario-button:hover:not(:disabled) {
+  background: #2559d6;
+}
+
+.save-scenario-button:disabled {
+  border-color: #c9d2df;
+  background: #d8dee8;
+  color: #7d8898;
+  cursor: not-allowed;
+}
+
 .right-panel {
   display: grid;
   grid-template-rows: auto 1fr;
@@ -320,6 +342,26 @@ p {
 
 .panel-content.hidden {
   display: none;
+}
+
+.test-scenario-panel {
+  padding: 12px;
+  overflow: auto;
+  background: #ffffff;
+}
+
+.test-scenario-panel pre {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: #243044;
+  font: 12px/1.5 "Cascadia Mono", Consolas, monospace;
+}
+
+.empty-test-scenario {
+  margin: 0;
+  color: #697789;
+  font: 13px/1.5 system-ui, sans-serif;
 }
 
 .modal-backdrop {

@@ -80,6 +80,14 @@
           />
           Auto-complete
         </label>
+        <button
+          type="button"
+          class="save-scenario-button"
+          [disabled]="!canSaveTestScenario"
+          (click)="saveScenario()"
+        >
+          Save scenario
+        </button>
       </div>
 
       <app-runtime-status *ngIf="activeMode === 'play'" />
@@ -118,6 +126,13 @@
         >
           XML
         </button>
+        <button
+          type="button"
+          [class.active]="activePanel === 'test-scenario'"
+          (click)="setPanel('test-scenario')"
+        >
+          Test Scenario
+        </button>
       </div>
 
       <div class="panel-content" [class.hidden]="activePanel !== 'properties'">
@@ -125,6 +140,12 @@
       </div>
       <div class="panel-content" [class.hidden]="activePanel !== 'xml'">
         <app-xml-viewer [xml]="workflow.bpmnXml" />
+      </div>
+      <div class="panel-content test-scenario-panel" [class.hidden]="activePanel !== 'test-scenario'">
+        <pre *ngIf="testScenarioJson; else noTestScenario">{{ testScenarioJson }}</pre>
+        <ng-template #noTestScenario>
+          <p class="empty-test-scenario">No test scenario recorded for this diagram.</p>
+        </ng-template>
       </div>
     </aside>
   </section>

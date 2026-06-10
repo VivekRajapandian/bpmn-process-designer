@@ -28,8 +28,10 @@ import {
   RuntimeStatus,
   TaskHandlingMode
 } from '../core/play-mode/play-runtime-integration.service';
+import { TestScenario } from '../play-mode/test-scenarios/test-scenario.model';
+import { TestScenarioRecorderService } from '../play-mode/test-scenarios/test-scenario-recorder.service';
 
-type RightPanel = 'properties' | 'xml';
+type RightPanel = 'properties' | 'xml' | 'test-scenario';
 type WorkspaceMode = 'design' | 'play';
 interface WorkflowDetails {
   name: string;
@@ -71,6 +73,8 @@ export class BpmnWorkspaceComponent implements AfterViewInit, OnDestroy {
     message: 'Play mode is off'
   };
   saveMessage = '';
+  testScenarioJson = '';
+  canSaveTestScenario = false;
   engineChoice?: {
     title: string;
     enginePrompt?: string;
@@ -97,7 +101,8 @@ export class BpmnWorkspaceComponent implements AfterViewInit, OnDestroy {
     private readonly sampleWorkflows: SampleWorkflowsService,
     private readonly workflowState: WorkflowStateService,
     private readonly workflowValidation: WorkflowValidationService,
-    private readonly runtimeIntegration: PlayRuntimeIntegrationService
+    private readonly runtimeIntegration: PlayRuntimeIntegrationService,
+    private readonly testScenarioRecorder: TestScenarioRecorderService
   ) {
     this.workflow = this.workflowState.workflow;
     this.samples = this.workflowState.samples;
@@ -113,6 +118,8 @@ export class BpmnWorkspaceComponent implements AfterViewInit, OnDestroy {
     // Initialize Camunda 8 runtime integration for token simulator
     this.runtimeIntegration.initialize();
     this.runtimeIntegration.setPlayModeActive(false);
+    this.testScenarioRecorder.initialize();
+    this.testScenarioRecorder.setPlayModeActive(false);
 
     this.bpmnAdapter.getEventBus().on('tokenSimulation.toggleMode', (event: any) => {
       console.log(
@@ -137,6 +144,18 @@ export class BpmnWorkspaceComponent implements AfterViewInit, OnDestroy {
     this.subscription.add(
       this.runtimeIntegration.getStatus().subscribe((status) => {
         this.runtimeStatus = status;
+      })
+    );
+
+    this.subscription.add(
+      this.testScenarioRecorder.getSelectedScenario().subscribe((scenario) => {
+        this.testScenarioJson = this.formatTestScenario(scenario);
+      })
+    );
+
+    this.subscription.add(
+      this.testScenarioRecorder.canSaveScenario().subscribe((canSave) => {
+        this.canSaveTestScenario = canSave;
       })
     );
 
@@ -313,6 +332,7 @@ export class BpmnWorkspaceComponent implements AfterViewInit, OnDestroy {
 
     this.activeMode = mode;
     this.runtimeIntegration.setPlayModeActive(mode === 'play');
+    this.testScenarioRecorder.setPlayModeActive(mode === 'play');
 
     if (mode === 'design' && this.tokenSimulationActive) {
       this.bpmnAdapter.setTokenSimulationActive(false);
@@ -334,6 +354,18 @@ export class BpmnWorkspaceComponent implements AfterViewInit, OnDestroy {
 
   setAutoComplete(enabled: boolean): void {
     this.setTaskHandlingMode(enabled ? 'auto-complete' : 'manual');
+  }
+
+  saveScenario(): void {
+    const savedScenario = this.testScenarioRecorder.saveCurrentScenario();
+
+    if (!savedScenario) {
+      this.saveMessage = 'Complete the current Play Mode instance before saving a scenario';
+      return;
+    }
+
+    this.activePanel = 'test-scenario';
+    this.saveMessage = `Saved scenario "${savedScenario.testCases[0]?.name || 'Recorded Test'}"`;
   }
 
   isCanvasBlocked(): boolean {
@@ -409,6 +441,7 @@ export class BpmnWorkspaceComponent implements AfterViewInit, OnDestroy {
       this.workflowState.setWorkflow(workflow, dirty);
       this.bpmnAdapter.initializeForEngine(workflow.engineType);
       await this.bpmnAdapter.importXml(workflow.bpmnXml);
+      this.testScenarioRecorder.setActiveWorkflow(workflow.id);
       this.workflowState.setProblems(
         this.workflowValidation.validate(workflow.bpmnXml, workflow.engineType)
       );
@@ -434,6 +467,10 @@ export class BpmnWorkspaceComponent implements AfterViewInit, OnDestroy {
     const xml = await this.bpmnAdapter.saveXml();
     this.workflowState.setXml(xml, dirty);
     this.saveMessage = '';
+  }
+
+  private formatTestScenario(scenario: TestScenario | undefined): string {
+    return scenario ? JSON.stringify(scenario, null, 2) : '';
   }
 
   private canDiscardChanges(): boolean {
