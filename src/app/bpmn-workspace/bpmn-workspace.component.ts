@@ -30,6 +30,10 @@ import {
 } from '../core/play-mode/play-runtime-integration.service';
 import { TestScenario } from '../play-mode/test-scenarios/test-scenario.model';
 import { TestScenarioRecorderService } from '../play-mode/test-scenarios/test-scenario-recorder.service';
+import {
+  TestScenarioRunnerService,
+  TestScenarioRunStatus
+} from '../play-mode/test-scenarios/test-scenario-runner.service';
 
 type RightPanel = 'properties' | 'xml' | 'test-scenario';
 type BottomPanel = 'scenarios' | 'problems';
@@ -78,6 +82,11 @@ export class BpmnWorkspaceComponent implements AfterViewInit, OnDestroy {
   testScenarioJson = '';
   savedTestScenarios: TestScenario[] = [];
   canSaveTestScenario = false;
+  testScenarioRunStatus: TestScenarioRunStatus = {
+    state: 'idle',
+    message: 'No scenario is running'
+  };
+  scenarioRunStatuses: Record<string, string> = {};
   engineChoice?: {
     title: string;
     enginePrompt?: string;
@@ -105,7 +114,8 @@ export class BpmnWorkspaceComponent implements AfterViewInit, OnDestroy {
     private readonly workflowState: WorkflowStateService,
     private readonly workflowValidation: WorkflowValidationService,
     private readonly runtimeIntegration: PlayRuntimeIntegrationService,
-    private readonly testScenarioRecorder: TestScenarioRecorderService
+    private readonly testScenarioRecorder: TestScenarioRecorderService,
+    private readonly testScenarioRunner: TestScenarioRunnerService
   ) {
     this.workflow = this.workflowState.workflow;
     this.samples = this.workflowState.samples;
@@ -123,6 +133,7 @@ export class BpmnWorkspaceComponent implements AfterViewInit, OnDestroy {
     this.runtimeIntegration.setPlayModeActive(false);
     this.testScenarioRecorder.initialize();
     this.testScenarioRecorder.setPlayModeActive(false);
+    this.testScenarioRunner.initialize();
 
     this.bpmnAdapter.getEventBus().on('tokenSimulation.toggleMode', (event: any) => {
       console.log(
@@ -165,6 +176,16 @@ export class BpmnWorkspaceComponent implements AfterViewInit, OnDestroy {
     this.subscription.add(
       this.testScenarioRecorder.canSaveScenario().subscribe((canSave) => {
         this.canSaveTestScenario = canSave;
+      })
+    );
+
+    this.subscription.add(
+      this.testScenarioRunner.getStatus().subscribe((status) => {
+        this.testScenarioRunStatus = status;
+
+        if (status.scenarioName) {
+          this.scenarioRunStatuses[status.scenarioName] = this.formatScenarioRunState(status.state);
+        }
       })
     );
 
@@ -397,6 +418,64 @@ export class BpmnWorkspaceComponent implements AfterViewInit, OnDestroy {
     this.saveMessage = `Deleted scenario "${scenarioName}"`;
   }
 
+  async runScenario(scenario: TestScenario): Promise<void> {
+    const scenarioName = this.getScenarioName(scenario);
+
+    try {
+      if (this.activeMode !== 'play') {
+        this.setWorkspaceMode('play');
+      }
+
+      this.activeBottomPanel = 'scenarios';
+      this.scenarioRunStatuses[scenarioName] = 'Running';
+      await this.testScenarioRunner.runScenario(scenario);
+      this.saveMessage = `Scenario passed: "${scenarioName}"`;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Scenario run failed.';
+      this.saveMessage = `Scenario failed: "${scenarioName}" - ${message}`;
+    }
+  }
+
+  async runAllScenarios(): Promise<void> {
+    if (!this.savedTestScenarios.length || this.isScenarioRunning()) {
+      return;
+    }
+
+    this.scenarioRunStatuses = {};
+    this.activeBottomPanel = 'scenarios';
+
+    if (this.activeMode !== 'play') {
+      this.setWorkspaceMode('play');
+    }
+
+    for (const scenario of this.savedTestScenarios) {
+      const scenarioName = this.getScenarioName(scenario);
+
+      try {
+        this.scenarioRunStatuses[scenarioName] = 'Running';
+        await this.testScenarioRunner.runScenario(scenario);
+        this.scenarioRunStatuses[scenarioName] = 'Passed';
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Scenario run failed.';
+        this.scenarioRunStatuses[scenarioName] = 'Failed';
+        this.saveMessage = `Run all stopped at "${scenarioName}" - ${message}`;
+        return;
+      }
+    }
+
+    this.saveMessage = `All ${this.savedTestScenarios.length} scenarios passed`;
+  }
+
+  getScenarioStatus(scenario: TestScenario): string {
+    const scenarioName = this.getScenarioName(scenario);
+
+    return this.scenarioRunStatuses[scenarioName] || '-';
+  }
+
+  isScenarioRunning(): boolean {
+    return this.testScenarioRunStatus.state === 'running';
+  }
+
   isCanvasBlocked(): boolean {
     return this.activeMode === 'play' && this.runtimeStatus.state === 'deploying';
   }
@@ -500,6 +579,22 @@ export class BpmnWorkspaceComponent implements AfterViewInit, OnDestroy {
 
   private formatTestScenario(scenario: TestScenario | undefined): string {
     return scenario ? JSON.stringify(scenario, null, 2) : '';
+  }
+
+  private formatScenarioRunState(state: TestScenarioRunStatus['state']): string {
+    if (state === 'running') {
+      return 'Running';
+    }
+
+    if (state === 'passed') {
+      return 'Passed';
+    }
+
+    if (state === 'failed') {
+      return 'Failed';
+    }
+
+    return '-';
   }
 
   private canDiscardChanges(): boolean {

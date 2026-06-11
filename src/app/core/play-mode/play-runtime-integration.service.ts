@@ -8,6 +8,7 @@ import {
   UserTask
 } from '../camunda8/camunda8-client.service';
 import { TestScenarioRuntimeAction } from '../../play-mode/test-scenarios/test-scenario.model';
+import { TestScenarioEventService } from '../../play-mode/test-scenarios/test-scenario-event.service';
 
 export type TaskHandlingMode = 'manual' | 'auto-complete';
 
@@ -41,6 +42,7 @@ export class PlayRuntimeIntegrationService {
   private runtimeInstanceCompleted = false;
   private playModeActive = false;
   private tokenSimulationActive = false;
+  private scenarioReplayActive = false;
   private taskHandlingMode: TaskHandlingMode = 'manual';
   private deploymentPromise?: Promise<void>;
   private deployedProcessDefinition?: DeployedProcessDefinition;
@@ -52,7 +54,8 @@ export class PlayRuntimeIntegrationService {
 
   constructor(
     private readonly modelerAdapter: BpmnModelerAdapterService,
-    private readonly camunda8Client: Camunda8ClientService
+    private readonly camunda8Client: Camunda8ClientService,
+    private readonly testScenarioEvents: TestScenarioEventService
   ) {}
 
   /**
@@ -118,6 +121,7 @@ export class PlayRuntimeIntegrationService {
           element?.type === 'bpmn:UserTask' &&
           this.playModeActive &&
           this.tokenSimulationActive &&
+          !this.scenarioReplayActive &&
           this.taskHandlingMode === 'manual'
         ) {
           void this.completeUserTaskAfterTokenResume(element.id);
@@ -128,6 +132,7 @@ export class PlayRuntimeIntegrationService {
           element?.type === 'bpmn:ServiceTask' &&
           this.playModeActive &&
           this.tokenSimulationActive &&
+          !this.scenarioReplayActive &&
           this.taskHandlingMode === 'manual'
         ) {
           void this.completeServiceTaskJobAtElement(element, false);
@@ -138,6 +143,7 @@ export class PlayRuntimeIntegrationService {
           element?.type === 'bpmn:UserTask' &&
           this.playModeActive &&
           this.tokenSimulationActive &&
+          !this.scenarioReplayActive &&
           this.taskHandlingMode === 'auto-complete'
         ) {
           void this.autoCompleteUserTaskAtElement(element.id);
@@ -148,6 +154,7 @@ export class PlayRuntimeIntegrationService {
           element?.type === 'bpmn:ServiceTask' &&
           this.playModeActive &&
           this.tokenSimulationActive &&
+          !this.scenarioReplayActive &&
           this.taskHandlingMode === 'auto-complete'
         ) {
           void this.completeServiceTaskJobAtElement(element, true);
@@ -282,6 +289,45 @@ export class PlayRuntimeIntegrationService {
 
       this.updateStatus('waiting', message);
     }
+  }
+
+  setScenarioReplayActive(active: boolean): void {
+    this.scenarioReplayActive = active;
+  }
+
+  async completeUserTaskForScenario(elementId: string): Promise<void> {
+    await this.autoCompleteUserTaskAtElement(elementId);
+  }
+
+  async completeJobForScenario(elementId: string): Promise<void> {
+    const element = this.getElementById(elementId);
+
+    if (!element) {
+      throw new Error(`Cannot complete job for unknown BPMN element "${elementId}".`);
+    }
+
+    await this.completeServiceTaskJobAtElement(element, true);
+  }
+
+  async publishMessageForScenario(
+    elementId: string,
+    messageName?: string,
+    correlationKey?: string
+  ): Promise<void> {
+    const element = this.getElementById(elementId);
+
+    if (!element) {
+      throw new Error(`Cannot publish message for unknown BPMN element "${elementId}".`);
+    }
+
+    await this.correlateMessageEvent(
+      element,
+      {
+        name: messageName || this.getMessageEventDefinition(element)?.messageRef?.name
+      },
+      correlationKey
+    );
+    this.modelerAdapter.triggerTokenSimulationElement(elementId);
   }
 
   private resetRuntimeSession(): void {
@@ -941,6 +987,10 @@ export class PlayRuntimeIntegrationService {
   }
 
   private shouldCorrelateMessageEvent(traceAction: string | undefined): boolean {
+    if (this.scenarioReplayActive) {
+      return false;
+    }
+
     if (this.taskHandlingMode === 'auto-complete') {
       return traceAction === 'enter';
     }
@@ -948,14 +998,18 @@ export class PlayRuntimeIntegrationService {
     return traceAction === 'signal';
   }
 
-  private async correlateMessageEvent(element: any, messageRef: any): Promise<void> {
+  private async correlateMessageEvent(
+    element: any,
+    messageRef: any,
+    correlationKey = this.defaultMessageCorrelationKey
+  ): Promise<void> {
     const elementId = element?.id;
     const messageName = messageRef?.name;
 
     console.log(
       `[PlayRuntime] correlateMessageEvent requested ` +
       `(element=${elementId || '(none)'}, messageName=${messageName || '(none)'}, ` +
-      `correlationKey=${this.defaultMessageCorrelationKey}, playModeActive=${this.playModeActive}, ` +
+      `correlationKey=${correlationKey}, playModeActive=${this.playModeActive}, ` +
       `tokenSimulationActive=${this.tokenSimulationActive})`
     );
 
@@ -989,18 +1043,18 @@ export class PlayRuntimeIntegrationService {
     try {
       this.updateStatus(
         'starting',
-        `Correlating message ${messageName} with key ${this.defaultMessageCorrelationKey}...`,
+        `Correlating message ${messageName} with key ${correlationKey}...`,
         this.currentProcessInstanceKey
       );
 
       console.log(
         `[PlayRuntime] Calling Camunda message correlation API ` +
-        `(messageName=${messageName}, correlationKey=${this.defaultMessageCorrelationKey}, element=${elementId})`
+        `(messageName=${messageName}, correlationKey=${correlationKey}, element=${elementId})`
       );
 
       const response = await this.camunda8Client.correlateMessage(
         messageName,
-        this.defaultMessageCorrelationKey
+        correlationKey
       );
 
       console.log('[PlayRuntime] Message correlation API response:', response);
@@ -1011,13 +1065,13 @@ export class PlayRuntimeIntegrationService {
         eventDefinitionType: this.getMessageEventDefinition(element)?.$type,
         interrupting: element?.businessObject?.cancelActivity !== false,
         messageName,
-        correlationKey: this.defaultMessageCorrelationKey,
+        correlationKey,
         processInstanceId: response.processInstanceKey || this.currentProcessInstanceKey
       });
 
       this.updateStatus(
         'success',
-        `Correlated message ${messageName} with key ${this.defaultMessageCorrelationKey}.`,
+        `Correlated message ${messageName} with key ${correlationKey}.`,
         response.processInstanceKey || this.currentProcessInstanceKey
       );
     } catch (error) {
@@ -1064,7 +1118,10 @@ export class PlayRuntimeIntegrationService {
   }
 
   private emitTestScenarioRuntimeAction(action: TestScenarioRuntimeAction): void {
-    this.modelerAdapter.getEventBus().fire('testScenario.runtimeAction', { action });
+    this.testScenarioEvents.emitRuntimeAction({
+      ...action,
+      replay: this.scenarioReplayActive
+    });
   }
 
   private getStartEventId(): string | undefined {
@@ -1082,6 +1139,18 @@ export class PlayRuntimeIntegrationService {
         startEvents[0]?.id;
     } catch (error) {
       console.warn('[PlayRuntime] Failed to resolve BPMN start event id.', error);
+      return undefined;
+    }
+  }
+
+  private getElementById(elementId: string | undefined): any | undefined {
+    if (!elementId) {
+      return undefined;
+    }
+
+    try {
+      return this.modelerAdapter.getModeler().get('elementRegistry').get(elementId);
+    } catch {
       return undefined;
     }
   }

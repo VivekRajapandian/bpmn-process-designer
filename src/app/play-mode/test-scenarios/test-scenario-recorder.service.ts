@@ -8,6 +8,7 @@ import {
   TestScenario,
   TestScenarioRuntimeAction
 } from './test-scenario.model';
+import { TestScenarioEventService } from './test-scenario-event.service';
 import { TestScenarioMapperService } from './test-scenario-mapper.service';
 
 const TEST_SCENARIOS_KEY = 'bpmn-process-designer.test-scenarios';
@@ -17,6 +18,7 @@ export class TestScenarioRecorderService {
   private initialized = false;
   private playModeActive = false;
   private tokenSimulationActive = false;
+  private scenarioReplayActive = false;
   private scenario?: TestScenario;
   private currentTestCase?: TestCase;
   private readonly coveredFlowNodeIds = new Set<string>();
@@ -33,7 +35,8 @@ export class TestScenarioRecorderService {
 
   constructor(
     private readonly modelerAdapter: BpmnModelerAdapterService,
-    private readonly mapper: TestScenarioMapperService
+    private readonly mapper: TestScenarioMapperService,
+    private readonly testScenarioEvents: TestScenarioEventService
   ) {}
 
   initialize(): void {
@@ -61,12 +64,12 @@ export class TestScenarioRecorderService {
       this.startRecording();
     });
 
-    eventBus.on('testScenario.runtimeAction', (event: any) => {
-      if (!this.playModeActive || !event?.action) {
+    this.testScenarioEvents.getRuntimeActions().subscribe((action) => {
+      if (!this.playModeActive || action.replay) {
         return;
       }
 
-      this.recordRuntimeAction(event.action);
+      this.recordRuntimeAction(action);
     });
 
     eventBus.on('tokenSimulation.simulator.trace', (event: any) => {
@@ -98,6 +101,14 @@ export class TestScenarioRecorderService {
     }
 
     this.tokenSimulationActive = this.modelerAdapter.isTokenSimulationActive();
+  }
+
+  setScenarioReplayActive(active: boolean): void {
+    this.scenarioReplayActive = active;
+
+    if (active) {
+      this.resetRecording();
+    }
   }
 
   setActiveWorkflow(workflowId: string): void {
@@ -608,7 +619,7 @@ export class TestScenarioRecorderService {
   }
 
   private shouldRecord(): boolean {
-    return this.playModeActive && this.tokenSimulationActive;
+    return this.playModeActive && this.tokenSimulationActive && !this.scenarioReplayActive;
   }
 
   private isRootSimulationScope(elementType: string | undefined): boolean {

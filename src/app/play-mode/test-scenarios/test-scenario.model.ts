@@ -24,6 +24,7 @@ export interface TestInstruction {
 
 export interface TestScenarioRuntimeAction extends TestInstruction {
   processInstanceId?: string;
+  replay?: boolean;
 }
 
 export interface TestScenarioMetadata {

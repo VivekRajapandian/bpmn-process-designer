@@ -125,7 +125,13 @@
         <div class="bottom-panel-content" [class.hidden]="activeBottomPanel !== 'scenarios'">
           <div class="scenario-summary">
             <span>Overall coverage: <strong>{{ savedTestScenarios.length ? '100%' : '0%' }}</strong></span>
-            <button type="button" disabled>Run all scenarios</button>
+            <button
+              type="button"
+              [disabled]="!savedTestScenarios.length || isScenarioRunning()"
+              (click)="runAllScenarios()"
+            >
+              Run all scenarios
+            </button>
             <span class="scenario-count">{{ savedTestScenarios.length }} test scenarios</span>
           </div>
 
@@ -140,9 +146,16 @@
             <tbody>
               <tr *ngFor="let scenario of savedTestScenarios; let scenarioIndex = index">
                 <td>{{ getScenarioName(scenario) }}</td>
-                <td>-</td>
+                <td>{{ getScenarioStatus(scenario) }}</td>
                 <td class="scenario-operations">
-                  <button type="button" disabled aria-label="Run scenario">▶</button>
+                  <button
+                    type="button"
+                    [disabled]="isScenarioRunning()"
+                    aria-label="Run scenario"
+                    (click)="runScenario(scenario)"
+                  >
+                    ▶
+                  </button>
                   <button
                     type="button"
                     class="delete-scenario-button"

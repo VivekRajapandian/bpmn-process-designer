@@ -248,6 +248,37 @@ export class BpmnModelerAdapterService {
     return this.continueTokenAtElements(elementId, this.getPlayModePausePointElements());
   }
 
+  triggerTokenSimulationElement(elementId: string): boolean {
+    this.ensureModeler();
+
+    const simulator = this.modeler.get('simulator');
+    const element = this.modeler.get('elementRegistry').get(elementId);
+
+    if (!element) {
+      console.warn(`[BpmnAdapter] No BPMN element found to trigger "${elementId}"`);
+      return false;
+    }
+
+    const subscriptions = simulator.findSubscriptions({ element });
+
+    if (!subscriptions.length) {
+      console.warn(`[BpmnAdapter] No token simulation subscription found for "${elementId}"`);
+      return false;
+    }
+
+    const sortedSubscriptions = subscriptions.slice().sort((a: any, b: any) => {
+      return a.event?.type === 'none' ? 1 : -1;
+    });
+
+    simulator.trigger({
+      event: sortedSubscriptions[0].event,
+      scope: sortedSubscriptions[0].scope
+    });
+
+    console.log(`[BpmnAdapter] Triggered token simulation element "${elementId}"`);
+    return true;
+  }
+
   private continueTokenAtElements(elementId: string | undefined, fallbackElements: any[]): boolean {
     this.ensureModeler();
 
