@@ -32,6 +32,7 @@ import { TestScenario } from '../play-mode/test-scenarios/test-scenario.model';
 import { TestScenarioRecorderService } from '../play-mode/test-scenarios/test-scenario-recorder.service';
 
 type RightPanel = 'properties' | 'xml' | 'test-scenario';
+type BottomPanel = 'scenarios' | 'problems';
 type WorkspaceMode = 'design' | 'play';
 interface WorkflowDetails {
   name: string;
@@ -65,6 +66,7 @@ export class BpmnWorkspaceComponent implements AfterViewInit, OnDestroy {
   workflow!: Workflow;
   problems: WorkflowProblem[] = [];
   activePanel: RightPanel = 'properties';
+  activeBottomPanel: BottomPanel = 'problems';
   activeMode: WorkspaceMode = 'design';
   tokenSimulationActive = false;
   taskHandlingMode: TaskHandlingMode = 'manual';
@@ -74,6 +76,7 @@ export class BpmnWorkspaceComponent implements AfterViewInit, OnDestroy {
   };
   saveMessage = '';
   testScenarioJson = '';
+  savedTestScenarios: TestScenario[] = [];
   canSaveTestScenario = false;
   engineChoice?: {
     title: string;
@@ -150,6 +153,12 @@ export class BpmnWorkspaceComponent implements AfterViewInit, OnDestroy {
     this.subscription.add(
       this.testScenarioRecorder.getSelectedScenario().subscribe((scenario) => {
         this.testScenarioJson = this.formatTestScenario(scenario);
+      })
+    );
+
+    this.subscription.add(
+      this.testScenarioRecorder.getSavedScenarios().subscribe((scenarios) => {
+        this.savedTestScenarios = scenarios;
       })
     );
 
@@ -320,6 +329,10 @@ export class BpmnWorkspaceComponent implements AfterViewInit, OnDestroy {
     this.activePanel = panel;
   }
 
+  setBottomPanel(panel: BottomPanel): void {
+    this.activeBottomPanel = panel;
+  }
+
   renameWorkflow(): void {
     void this.renameCurrentWorkflow();
   }
@@ -365,7 +378,23 @@ export class BpmnWorkspaceComponent implements AfterViewInit, OnDestroy {
     }
 
     this.activePanel = 'test-scenario';
+    this.activeBottomPanel = 'scenarios';
     this.saveMessage = `Saved scenario "${savedScenario.testCases[0]?.name || 'Recorded Test'}"`;
+  }
+
+  getScenarioName(scenario: TestScenario): string {
+    return scenario.testCases[0]?.name || 'Recorded Test';
+  }
+
+  deleteScenario(index: number, scenario: TestScenario): void {
+    const scenarioName = this.getScenarioName(scenario);
+
+    if (!window.confirm(`Delete scenario "${scenarioName}"?`)) {
+      return;
+    }
+
+    this.testScenarioRecorder.deleteSavedScenario(index);
+    this.saveMessage = `Deleted scenario "${scenarioName}"`;
   }
 
   isCanvasBlocked(): boolean {

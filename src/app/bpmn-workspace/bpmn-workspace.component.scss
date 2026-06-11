@@ -301,6 +301,135 @@ p {
   cursor: not-allowed;
 }
 
+.bottom-panel {
+  min-height: 0;
+  overflow: hidden;
+  background: #ffffff;
+  border-top: 1px solid #cfd6df;
+}
+
+.bottom-tabs {
+  display: flex;
+  align-items: stretch;
+  gap: 18px;
+  height: 38px;
+  padding: 0 12px;
+  background: #f8fafc;
+  border-bottom: 1px solid #d8dee8;
+}
+
+.bottom-tabs button {
+  position: relative;
+  min-width: 78px;
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+  color: #334155;
+  cursor: pointer;
+  font: 600 13px/1 system-ui, sans-serif;
+}
+
+.bottom-tabs button:disabled {
+  color: #68778b;
+  cursor: default;
+}
+
+.bottom-tabs button.active {
+  color: #1155d9;
+}
+
+.bottom-tabs button.active::after {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  background: #2f6df6;
+  content: '';
+}
+
+.bottom-panel-content {
+  height: calc(100% - 38px);
+  overflow: auto;
+}
+
+.bottom-panel-content.hidden {
+  display: none;
+}
+
+.scenario-summary {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-height: 44px;
+  padding: 0 14px;
+  color: #111827;
+  font: 13px/1.3 system-ui, sans-serif;
+}
+
+.scenario-summary button {
+  border: 0;
+  background: transparent;
+  color: #2f6df6;
+  font: 600 13px/1 system-ui, sans-serif;
+}
+
+.scenario-count {
+  margin-left: auto;
+  color: #2f6df6;
+}
+
+.scenario-table {
+  width: 100%;
+  border-collapse: collapse;
+  font: 13px/1.3 system-ui, sans-serif;
+}
+
+.scenario-table th {
+  height: 32px;
+  padding: 0 14px;
+  background: #e5e7eb;
+  color: #111827;
+  text-align: left;
+  font-weight: 700;
+}
+
+.scenario-table td {
+  height: 34px;
+  padding: 0 14px;
+  border-bottom: 1px solid #e5e7eb;
+  color: #243044;
+}
+
+.scenario-operations {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.scenario-operations button {
+  border: 0;
+  background: transparent;
+  color: #111827;
+  cursor: pointer;
+  font: 14px/1 system-ui, sans-serif;
+}
+
+.scenario-operations button:disabled {
+  color: #9aa5b1;
+  cursor: not-allowed;
+}
+
+.delete-scenario-button:hover {
+  color: #b42318;
+}
+
+.empty-scenarios {
+  margin: 14px;
+  color: #697789;
+  font: 13px/1.5 system-ui, sans-serif;
+}
+
 .right-panel {
   display: grid;
   grid-template-rows: auto 1fr;

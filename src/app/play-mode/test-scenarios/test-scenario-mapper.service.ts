@@ -1,40 +1,42 @@
 import { Injectable } from '@angular/core';
-import { TestInstruction } from './test-scenario.model';
+import { TestInstruction, TestScenarioRuntimeAction } from './test-scenario.model';
 
 @Injectable({ providedIn: 'root' })
 export class TestScenarioMapperService {
-  toInstruction(
-    element: any,
-    traceAction: string | undefined,
-    processDefinitionId: string
-  ): TestInstruction | undefined {
-    const elementId = element?.id;
-    const elementType = element?.type || element?.businessObject?.$type;
-
-    if (!elementId || !elementType) {
-      return undefined;
-    }
-
-    if (elementType === 'bpmn:StartEvent' && traceAction === 'enter') {
+  fromRuntimeAction(action: TestScenarioRuntimeAction): TestInstruction | undefined {
+    if (action.type === 'create-process-instance') {
       return {
         type: 'create-process-instance',
-        elementId,
-        processDefinitionId,
-        variables: '{}'
+        elementId: action.elementId,
+        processDefinitionId: action.processDefinitionId,
+        variables: action.variables || '{}'
       };
     }
 
-    if (elementType === 'bpmn:UserTask' && traceAction === 'exit') {
+    if (action.type === 'complete-user-task') {
       return {
         type: 'complete-user-task',
-        elementId
+        elementId: action.elementId
       };
     }
 
-    if (elementType === 'bpmn:ServiceTask' && traceAction === 'exit') {
+    if (action.type === 'complete-job') {
       return {
         type: 'complete-job',
-        elementId
+        elementId: action.elementId,
+        jobType: action.jobType
+      };
+    }
+
+    if (action.type === 'publish-message') {
+      return {
+        type: 'publish-message',
+        elementId: action.elementId,
+        attachedToElementId: action.attachedToElementId,
+        eventDefinitionType: action.eventDefinitionType,
+        interrupting: action.interrupting,
+        messageName: action.messageName,
+        correlationKey: action.correlationKey
       };
     }
 

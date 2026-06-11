@@ -14,10 +14,19 @@ export interface TestInstruction {
   elementId: string;
   processDefinitionId?: string;
   variables?: string;
+  jobType?: string;
+  attachedToElementId?: string;
+  eventDefinitionType?: string;
+  messageName?: string;
+  correlationKey?: string;
+  interrupting?: boolean;
+}
+
+export interface TestScenarioRuntimeAction extends TestInstruction {
+  processInstanceId?: string;
 }
 
 export interface TestScenarioMetadata {
-  processInstanceId?: string;
   coveredFlowNodes: CoveredFlowNode[];
   coveredSequenceFlows: string[];
 }

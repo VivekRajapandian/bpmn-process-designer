@@ -7,6 +7,7 @@ import {
   DeployedProcessDefinition,
   UserTask
 } from '../camunda8/camunda8-client.service';
+import { TestScenarioRuntimeAction } from '../../play-mode/test-scenarios/test-scenario.model';
 
 export type TaskHandlingMode = 'manual' | 'auto-complete';
 
@@ -315,6 +316,12 @@ export class PlayRuntimeIntegrationService {
     this.instanceStarted = false;
     this.instanceStartInProgress = false;
     this.runtimeInstanceCompleted = true;
+    this.emitTestScenarioRuntimeAction({
+      type: 'process-instance-completed',
+      elementId: this.deployedProcessDefinition?.processDefinitionId || '',
+      processDefinitionId: this.deployedProcessDefinition?.processDefinitionId,
+      processInstanceId: this.currentProcessInstanceKey
+    });
     this.updateStatus('waiting', 'Process instance completed. Click play to start a new instance.');
   }
 
@@ -396,6 +403,13 @@ export class PlayRuntimeIntegrationService {
       this.completingUserTaskElementIds.clear();
       this.correlatedMessageEventElementIds.clear();
       this.runtimeInstanceCompleted = false;
+      this.emitTestScenarioRuntimeAction({
+        type: 'create-process-instance',
+        elementId: this.getStartEventId() || this.deployedProcessDefinition.processDefinitionId,
+        processDefinitionId: this.deployedProcessDefinition.processDefinitionId,
+        variables: '{}',
+        processInstanceId: processInstanceKey
+      });
 
       console.log(`[PlayRuntime] Process Instance START SUCCESS - Instance Key: "${processInstanceKey}"`);
 
@@ -552,6 +566,11 @@ export class PlayRuntimeIntegrationService {
       );
 
       await this.camunda8Client.completeUserTask(userTaskKey);
+      this.emitTestScenarioRuntimeAction({
+        type: 'complete-user-task',
+        elementId,
+        processInstanceId: this.currentProcessInstanceKey
+      });
 
       this.updateStatus(
         'success',
@@ -618,6 +637,11 @@ export class PlayRuntimeIntegrationService {
       );
 
       await this.camunda8Client.completeUserTask(userTaskKey);
+      this.emitTestScenarioRuntimeAction({
+        type: 'complete-user-task',
+        elementId,
+        processInstanceId: this.currentProcessInstanceKey
+      });
       this.continueUserTaskToken(task);
 
       this.updateStatus(
@@ -708,6 +732,12 @@ export class PlayRuntimeIntegrationService {
       );
 
       await this.camunda8Client.completeJob(jobKey);
+      this.emitTestScenarioRuntimeAction({
+        type: 'complete-job',
+        elementId,
+        jobType,
+        processInstanceId: this.currentProcessInstanceKey
+      });
 
       if (continueTokenAfterCompletion) {
         this.modelerAdapter.continueTaskToken(elementId);
@@ -974,6 +1004,16 @@ export class PlayRuntimeIntegrationService {
       );
 
       console.log('[PlayRuntime] Message correlation API response:', response);
+      this.emitTestScenarioRuntimeAction({
+        type: 'publish-message',
+        elementId,
+        attachedToElementId: element?.businessObject?.attachedToRef?.id,
+        eventDefinitionType: this.getMessageEventDefinition(element)?.$type,
+        interrupting: element?.businessObject?.cancelActivity !== false,
+        messageName,
+        correlationKey: this.defaultMessageCorrelationKey,
+        processInstanceId: response.processInstanceKey || this.currentProcessInstanceKey
+      });
 
       this.updateStatus(
         'success',
@@ -1021,6 +1061,29 @@ export class PlayRuntimeIntegrationService {
     return new Promise((resolve) => {
       window.setTimeout(resolve, milliseconds);
     });
+  }
+
+  private emitTestScenarioRuntimeAction(action: TestScenarioRuntimeAction): void {
+    this.modelerAdapter.getEventBus().fire('testScenario.runtimeAction', { action });
+  }
+
+  private getStartEventId(): string | undefined {
+    try {
+      const elementRegistry = this.modelerAdapter.getModeler().get('elementRegistry');
+      const startEvents: any[] = [];
+
+      elementRegistry.forEach((element: any) => {
+        if (element?.type === 'bpmn:StartEvent' && !element?.labelTarget) {
+          startEvents.push(element);
+        }
+      });
+
+      return startEvents.find((element) => element?.parent?.type === 'bpmn:Process')?.id ||
+        startEvents[0]?.id;
+    } catch (error) {
+      console.warn('[PlayRuntime] Failed to resolve BPMN start event id.', error);
+      return undefined;
+    }
   }
 
   /**

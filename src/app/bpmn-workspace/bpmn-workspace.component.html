@@ -104,10 +104,70 @@
         </div>
       </div>
 
-      <app-problems-panel
-        [problems]="problems"
-        (problemSelected)="focusProblem($event)"
-      />
+      <section class="bottom-panel">
+        <nav class="bottom-tabs" aria-label="Execution panels">
+          <button
+            type="button"
+            [class.active]="activeBottomPanel === 'scenarios'"
+            (click)="setBottomPanel('scenarios')"
+          >
+            Scenarios
+          </button>
+          <button
+            type="button"
+            [class.active]="activeBottomPanel === 'problems'"
+            (click)="setBottomPanel('problems')"
+          >
+            Problems
+          </button>
+        </nav>
+
+        <div class="bottom-panel-content" [class.hidden]="activeBottomPanel !== 'scenarios'">
+          <div class="scenario-summary">
+            <span>Overall coverage: <strong>{{ savedTestScenarios.length ? '100%' : '0%' }}</strong></span>
+            <button type="button" disabled>Run all scenarios</button>
+            <span class="scenario-count">{{ savedTestScenarios.length }} test scenarios</span>
+          </div>
+
+          <table class="scenario-table" *ngIf="savedTestScenarios.length; else noSavedScenarios">
+            <thead>
+              <tr>
+                <th>Scenario name</th>
+                <th>Status</th>
+                <th>Operations</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let scenario of savedTestScenarios; let scenarioIndex = index">
+                <td>{{ getScenarioName(scenario) }}</td>
+                <td>-</td>
+                <td class="scenario-operations">
+                  <button type="button" disabled aria-label="Run scenario">▶</button>
+                  <button
+                    type="button"
+                    class="delete-scenario-button"
+                    aria-label="Delete scenario"
+                    (click)="deleteScenario(scenarioIndex, scenario)"
+                  >
+                    ⌫
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+
+          <ng-template #noSavedScenarios>
+            <p class="empty-scenarios">No saved test scenarios for this diagram.</p>
+          </ng-template>
+        </div>
+
+        <div class="bottom-panel-content" [class.hidden]="activeBottomPanel !== 'problems'">
+          <app-problems-panel
+            [problems]="problems"
+            (problemSelected)="focusProblem($event)"
+          />
+        </div>
+      </section>
     </section>
 
     <aside class="right-panel" [class.hidden-by-simulation]="tokenSimulationActive">
